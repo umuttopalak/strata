@@ -315,6 +315,47 @@ func TestDrawChrome(t *testing.T) {
 	}
 }
 
+func TestDrawAtEasesBetweenFrames(t *testing.T) {
+	tl := timelineOf([]string{"a"}, []int64{0}, []int64{1000})
+	l := NewLayout(tl)
+	height := func(pos float64) int {
+		p := DrawAt(tl, l, pos, "r", 40, 24)
+		for r, row := range p.Cells {
+			if row[20] != Sky {
+				return len(p.Cells) - r
+			}
+		}
+		return 0
+	}
+
+	h0, hq, hh, h1 := height(0), height(0.25), height(0.5), height(1)
+	if !(h0 == 0 && h0 < hq && hq < hh && hh < h1) {
+		t.Fatalf("heights 0/0.25/0.5/1 = %d %d %d %d, want strictly rising", h0, hq, hh, h1)
+	}
+	if hq > h1/4 {
+		t.Errorf("eased start: a quarter of the way should be below a quarter of the height, got %d of %d", hq, h1)
+	}
+
+	// Mid-way the caption already belongs to the commit being applied.
+	if p := DrawAt(tl, l, 0.5, "r", 40, 24); p.Progress != "commit 1/1" {
+		t.Errorf("progress = %q", p.Progress)
+	}
+	// Out-of-range positions clamp instead of panicking.
+	DrawAt(tl, l, -3, "r", 40, 24)
+	DrawAt(tl, l, 99, "r", 40, 24)
+}
+
+func TestStatusBeforeProgress(t *testing.T) {
+	tl := timelineOf([]string{"a"}, []int64{0}, []int64{10})
+	p := Draw(tl, NewLayout(tl), 1, "r", 60, 10)
+	p.Status = "paused 2×"
+	lines := p.Lines()
+	if footer := lines[len(lines)-1]; !strings.HasSuffix(footer, "paused 2×  commit 1/1") ||
+		ansi.StringWidth(footer) != 60 {
+		t.Errorf("footer = %q", footer)
+	}
+}
+
 // Golden files pin down the look. After an intended change, inspect the
 // diff and run: go test ./internal/render -update
 func TestGolden(t *testing.T) {

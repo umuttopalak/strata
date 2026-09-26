@@ -66,7 +66,9 @@ peaks; a repository with all its files in the root gets a peak per file.`,
 		Example: `  strata                      # the repository in the current directory
   strata ./path/to/repo       # a specific repository
   strata --speed 2 --depth 2  # faster playback, folders two levels deep
-  strata --since 2020-01-01   # only history from 2020 onwards`,
+  strata --since 2020-01-01   # only history from 2020 onwards
+
+Keys while playing: space pause · ←/→ seek · +/- speed · q quit`,
 		Args:          cobra.MaximumNArgs(1),
 		Version:       Version,
 		SilenceUsage:  true,
@@ -104,8 +106,8 @@ peaks; a repository with all its files in the root gets a peak per file.`,
 				return dumpFrames(cmd.OutOrStdout(), tl)
 			}
 			return player.Play(cmd.Context(), os.Stdout, tl, player.Options{
-				Repo:     name,
-				Interval: time.Duration(float64(player.DefaultInterval) / cfg.Speed),
+				Repo:  name,
+				Speed: cfg.Speed,
 			})
 		},
 	}

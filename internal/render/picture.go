@@ -44,17 +44,35 @@ type Picture struct {
 	Cells    [][]Cell // mountain rows, top first
 	Caption  string   // date · author · +added -deleted · subject
 	Progress string   // commit n/total
+	Status   string   // shown before Progress, e.g. "paused" or "2×"
 	Added    int
 	Deleted  int
 }
 
 // Draw renders frame i of tl for a terminal of width × height cells.
 func Draw(tl *timeline.Timeline, l Layout, i int, repo string, width, height int) Picture {
+	return DrawAt(tl, l, float64(i), repo, width, height)
+}
+
+// DrawAt renders a moment between two frames: pos 4.25 is a quarter of the
+// way from frame 4 to frame 5. Heights ease between the two, so mountains
+// grow and erode smoothly; the caption and snow follow frame 5, the commit
+// being applied.
+func DrawAt(tl *timeline.Timeline, l Layout, pos float64, repo string, width, height int) Picture {
 	width = max(width, 1)
 	rows := max(height-chromeRows, 1)
+	pos = math.Min(math.Max(pos, 0), float64(len(tl.Frames)-1))
+	i := int(math.Ceil(pos))
 	f := tl.Frames[i]
 
 	h, owner := Heights(l.Values(f), l.Max, width, float64(rows))
+	if prev := int(math.Floor(pos)); prev != i {
+		from, _ := Heights(l.Values(tl.Frames[prev]), l.Max, width, float64(rows))
+		t := smoothstep(pos - float64(prev))
+		for x := range h {
+			h[x] = from[x] + (h[x]-from[x])*t
+		}
+	}
 	touched := l.Touched(f)
 	cells := make([][]Cell, rows)
 	for r := range cells {
@@ -86,6 +104,11 @@ func Draw(tl *timeline.Timeline, l Layout, i int, repo string, width, height int
 		p.Added, p.Deleted = c.Added, c.Deleted
 	}
 	return p
+}
+
+// smoothstep eases t in 0..1 so motion starts and stops gently.
+func smoothstep(t float64) float64 {
+	return t * t * (3 - 2*t)
 }
 
 // cellAt draws a column of height h at the given level (1 is the bottom
@@ -150,9 +173,17 @@ func (p Picture) header() (name string, gap int, date string) {
 	return name, gap, date
 }
 
+// right is the text pinned to the right edge of the caption line.
+func (p Picture) right() string {
+	if p.Status == "" {
+		return p.Progress
+	}
+	return p.Status + "  " + p.Progress
+}
+
 // captionText fits the caption into the space left of the progress counter.
 func (p Picture) captionText() string {
-	room := p.Width - len(p.Progress) - 2
+	room := p.Width - ansi.StringWidth(p.right()) - 2
 	if room < 1 {
 		return ""
 	}
@@ -162,9 +193,10 @@ func (p Picture) captionText() string {
 // footer puts a (possibly styled) caption on the left and the progress
 // counter on the right edge.
 func (p Picture) footer(caption string) string {
-	gap := p.Width - ansi.StringWidth(caption) - len(p.Progress)
+	right := p.right()
+	gap := p.Width - ansi.StringWidth(caption) - ansi.StringWidth(right)
 	if gap < 1 {
-		return ansi.Truncate(p.Progress, p.Width, "")
+		return ansi.Truncate(right, p.Width, "")
 	}
-	return caption + strings.Repeat(" ", gap) + p.Progress
+	return caption + strings.Repeat(" ", gap) + right
 }
