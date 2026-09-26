@@ -30,6 +30,7 @@ type flags struct {
 	since string
 	dump  bool
 	dumpF bool
+	frame int
 }
 
 func (f flags) config(path string) (Config, error) {
@@ -86,6 +87,10 @@ in lines of code.`,
 			if f.dump {
 				return dump(cmd.Context(), cmd.OutOrStdout(), repo, opts)
 			}
+			if cmd.Flags().Changed("frame") {
+				return printFrame(cmd.Context(), repo, opts,
+					timeline.Options{Depth: cfg.Depth}, f.frame)
+			}
 			if f.dumpF {
 				return dumpFrames(cmd.Context(), cmd.OutOrStdout(), repo, opts,
 					timeline.Options{Depth: cfg.Depth})
@@ -101,7 +106,9 @@ in lines of code.`,
 	cmd.Flags().StringVar(&f.since, "since", "", "start from this date (YYYY-MM-DD)")
 	cmd.Flags().BoolVar(&f.dump, "dump", false, "print the parsed history instead of playing it")
 	cmd.Flags().BoolVar(&f.dumpF, "dump-frames", false, "print the timeline frames instead of playing them")
+	cmd.Flags().IntVar(&f.frame, "frame", -1, "print one frame (negative counts from the end) and exit")
 	_ = cmd.Flags().MarkHidden("dump")
+	_ = cmd.Flags().MarkHidden("frame")
 	_ = cmd.Flags().MarkHidden("dump-frames")
 	return cmd
 }

@@ -183,3 +183,26 @@ func TestBuilderDefaults(t *testing.T) {
 		t.Fatalf("Len = %d, want %d", tl.Len(), DefaultFrames)
 	}
 }
+
+func TestBuilderCeilingEasesDown(t *testing.T) {
+	tl := &Timeline{}
+	b := NewBuilder(gitlog.Bounds{First: day(2020, 1, 1), Last: day(2020, 1, 11)}, Options{Frames: 10}, tl)
+	b.Add(commit("big", day(2020, 1, 1), add("vendor/x", 1000), add("src/y", 100)))
+	b.Add(commit("drop", day(2020, 1, 2), del("vendor/x", 1000)))
+	b.Finish()
+
+	if c := tl.At(0).Ceiling; c != 1000 {
+		t.Fatalf("frame 0 ceiling = %d, want 1000", c)
+	}
+	prev := int64(1000)
+	for i := 1; i < tl.Len(); i++ {
+		f := tl.At(i)
+		if f.Ceiling >= prev || f.Ceiling < 100 {
+			t.Fatalf("frame %d ceiling = %d, want below %d and at least 100", i, f.Ceiling, prev)
+		}
+		if f.Max != 1000 {
+			t.Fatalf("frame %d max = %d, want 1000", i, f.Max)
+		}
+		prev = f.Ceiling
+	}
+}

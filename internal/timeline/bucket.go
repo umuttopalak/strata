@@ -1,6 +1,7 @@
 package timeline
 
 import (
+	"math"
 	"time"
 
 	"github.com/umuttopalak/summit/internal/gitlog"
@@ -8,6 +9,12 @@ import (
 
 // DefaultFrames is how many time slices a whole history is divided into.
 const DefaultFrames = 600
+
+// ceilingDecay is how much of the drawing scale is kept per frame after the
+// tallest column shrinks: about 70 frames to halve. Without it one huge
+// folder that is later deleted (a vendored node_modules) would keep every
+// other peak small for the rest of the replay.
+const ceilingDecay = 0.99
 
 // Options controls how commits are grouped.
 type Options struct {
@@ -35,6 +42,7 @@ type Builder struct {
 	commits int
 	caption *Caption
 	max     int64
+	ceiling float64
 }
 
 // NewBuilder prepares a builder that publishes frames to tl.
@@ -104,10 +112,13 @@ func (b *Builder) advanceTo(i int) {
 
 func (b *Builder) publish() {
 	totals := make([]int64, len(b.totals))
+	var tallest int64
 	for i, v := range b.totals {
 		totals[i] = max(v, 0)
-		b.max = max(b.max, totals[i])
+		tallest = max(tallest, totals[i])
 	}
+	b.max = max(b.max, tallest)
+	b.ceiling = max(float64(tallest), b.ceiling*ceilingDecay)
 	end := b.start.Add(b.step * time.Duration(b.cur+1))
 	if b.cur == b.n-1 {
 		end = b.end // the step is rounded down; land exactly on the last commit
@@ -118,6 +129,7 @@ func (b *Builder) publish() {
 		Totals:  totals,
 		Touched: append([]int64(nil), b.touched...),
 		Max:     b.max,
+		Ceiling: int64(math.Ceil(b.ceiling)),
 		Commits: b.commits,
 		Caption: b.caption,
 	}, b.names[:len(b.names):len(b.names)])

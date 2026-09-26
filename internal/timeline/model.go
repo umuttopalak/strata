@@ -48,6 +48,7 @@ type Frame struct {
 	Totals  []int64   // lines per column, never negative
 	Touched []int64   // unix time each column last changed, 0 if unknown
 	Max     int64     // largest column total in this or any earlier frame
+	Ceiling int64     // scale for drawing: follows Max up at once, eases down slowly
 	Commits int       // commits that landed in this slice
 	Caption *Caption  // last commit of the slice, nil for a quiet slice
 }
