@@ -10,6 +10,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/umuttopalak/summit/internal/gitlog"
+	"github.com/umuttopalak/summit/internal/timeline"
 )
 
 // Version is overridden at build time via -ldflags "-X ...cli.Version=v1.2.3".
@@ -28,6 +29,7 @@ type flags struct {
 	depth int
 	since string
 	dump  bool
+	dumpF bool
 }
 
 func (f flags) config(path string) (Config, error) {
@@ -84,6 +86,10 @@ in lines of code.`,
 			if f.dump {
 				return dump(cmd.Context(), cmd.OutOrStdout(), repo, opts)
 			}
+			if f.dumpF {
+				return dumpFrames(cmd.Context(), cmd.OutOrStdout(), repo, opts,
+					timeline.Options{Depth: cfg.Depth})
+			}
 			// Placeholder until the player lands.
 			fmt.Fprintf(cmd.OutOrStdout(), "repository: %s\nspeed: %gx  depth: %d\n",
 				repo.Root, cfg.Speed, cfg.Depth)
@@ -94,7 +100,9 @@ in lines of code.`,
 	cmd.Flags().IntVar(&f.depth, "depth", 1, "folder depth that defines a peak")
 	cmd.Flags().StringVar(&f.since, "since", "", "start from this date (YYYY-MM-DD)")
 	cmd.Flags().BoolVar(&f.dump, "dump", false, "print the parsed history instead of playing it")
+	cmd.Flags().BoolVar(&f.dumpF, "dump-frames", false, "print the timeline frames instead of playing them")
 	_ = cmd.Flags().MarkHidden("dump")
+	_ = cmd.Flags().MarkHidden("dump-frames")
 	return cmd
 }
 
