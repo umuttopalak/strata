@@ -15,7 +15,8 @@ func TestFlagValidation(t *testing.T) {
 		{"with since", flags{speed: 2, depth: 3, since: "2020-01-31"}, ""},
 		{"zero speed", flags{speed: 0, depth: 1}, "--speed"},
 		{"negative speed", flags{speed: -1, depth: 1}, "--speed"},
-		{"zero depth", flags{speed: 1, depth: 0}, "--depth"},
+		{"automatic depth", flags{speed: 1, depth: 0}, ""},
+		{"negative depth", flags{speed: 1, depth: -1}, "--depth"},
 		{"bad since", flags{speed: 1, depth: 1, since: "31/01/2020"}, "--since"},
 	}
 	for _, tt := range tests {

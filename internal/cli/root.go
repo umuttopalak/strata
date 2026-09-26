@@ -1,16 +1,19 @@
-// Package cli wires command-line flags to the summit pipeline.
+// Package cli wires command-line flags to the strata pipeline.
 package cli
 
 import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/spf13/cobra"
 
-	"github.com/umuttopalak/summit/internal/gitlog"
-	"github.com/umuttopalak/summit/internal/timeline"
+	"github.com/umuttopalak/strata/internal/gitlog"
+	"github.com/umuttopalak/strata/internal/player"
+	"github.com/umuttopalak/strata/internal/timeline"
 )
 
 // Version is overridden at build time via -ldflags "-X ...cli.Version=v1.2.3".
@@ -38,8 +41,8 @@ func (f flags) config(path string) (Config, error) {
 	if f.speed <= 0 {
 		return cfg, fmt.Errorf("--speed must be greater than 0 (got %g)", f.speed)
 	}
-	if f.depth < 1 {
-		return cfg, fmt.Errorf("--depth must be at least 1 (got %d)", f.depth)
+	if f.depth < 0 {
+		return cfg, fmt.Errorf("--depth must be 0 (automatic) or more (got %d)", f.depth)
 	}
 	if f.since != "" {
 		t, err := time.ParseInLocation("2006-01-02", f.since, time.Local)
@@ -54,15 +57,16 @@ func (f flags) config(path string) (Config, error) {
 func newRootCmd() *cobra.Command {
 	var f flags
 	cmd := &cobra.Command{
-		Use:   "summit [path]",
+		Use:   "strata [path]",
 		Short: "Watch a Git repository's history grow into a mountain range",
-		Long: `summit replays a Git repository's history in the terminal as a mountain
-range: each peak is a top-level folder and its height is the folder's size
-in lines of code.`,
-		Example: `  summit                      # the repository in the current directory
-  summit ./path/to/repo       # a specific repository
-  summit --speed 2 --depth 2  # faster playback, folders two levels deep
-  summit --since 2020-01-01   # only history from 2020 onwards`,
+		Long: `strata replays a Git repository's history in the terminal as a mountain
+range: each peak is a folder and its height is the folder's size in lines
+of code. By default strata picks the folder depth that gives at least four
+peaks; a repository with all its files in the root gets a peak per file.`,
+		Example: `  strata                      # the repository in the current directory
+  strata ./path/to/repo       # a specific repository
+  strata --speed 2 --depth 2  # faster playback, folders two levels deep
+  strata --since 2020-01-01   # only history from 2020 onwards`,
 		Args:          cobra.MaximumNArgs(1),
 		Version:       Version,
 		SilenceUsage:  true,
@@ -87,22 +91,26 @@ in lines of code.`,
 			if f.dump {
 				return dump(cmd.Context(), cmd.OutOrStdout(), repo, opts)
 			}
-			if cmd.Flags().Changed("frame") {
-				return printFrame(cmd.Context(), repo, opts,
-					timeline.Options{Depth: cfg.Depth}, f.frame)
+
+			tl, err := scan(cmd.Context(), repo, opts, timeline.Options{Depth: cfg.Depth})
+			if err != nil {
+				return friendly(err)
 			}
-			if f.dumpF {
-				return dumpFrames(cmd.Context(), cmd.OutOrStdout(), repo, opts,
-					timeline.Options{Depth: cfg.Depth})
+			name := filepath.Base(repo.Root)
+			switch {
+			case cmd.Flags().Changed("frame"):
+				return printFrame(cmd.OutOrStdout(), tl, name, f.frame)
+			case f.dumpF:
+				return dumpFrames(cmd.OutOrStdout(), tl)
 			}
-			// Placeholder until the player lands.
-			fmt.Fprintf(cmd.OutOrStdout(), "repository: %s\nspeed: %gx  depth: %d\n",
-				repo.Root, cfg.Speed, cfg.Depth)
-			return nil
+			return player.Play(cmd.Context(), os.Stdout, tl, player.Options{
+				Repo:     name,
+				Interval: time.Duration(float64(player.DefaultInterval) / cfg.Speed),
+			})
 		},
 	}
 	cmd.Flags().Float64Var(&f.speed, "speed", 1, "playback speed multiplier")
-	cmd.Flags().IntVar(&f.depth, "depth", 1, "folder depth that defines a peak")
+	cmd.Flags().IntVar(&f.depth, "depth", 0, "folder depth that defines a peak (0 = pick automatically)")
 	cmd.Flags().StringVar(&f.since, "since", "", "start from this date (YYYY-MM-DD)")
 	cmd.Flags().BoolVar(&f.dump, "dump", false, "print the parsed history instead of playing it")
 	cmd.Flags().BoolVar(&f.dumpF, "dump-frames", false, "print the timeline frames instead of playing them")
@@ -120,7 +128,7 @@ func friendly(err error) error {
 	case errors.Is(err, gitlog.ErrGitNotFound):
 		hint = "install Git from https://git-scm.com/downloads and make sure it is on your PATH"
 	case errors.Is(err, gitlog.ErrNotRepo):
-		hint = "run summit inside a Git repository or pass the path to one"
+		hint = "run strata inside a Git repository or pass the path to one"
 	case errors.Is(err, gitlog.ErrEmptyRepo):
 		hint = "make at least one commit, then try again"
 	case errors.Is(err, gitlog.ErrNoCommits):

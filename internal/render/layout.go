@@ -1,61 +1,106 @@
-// Package render turns timeline frames into a mountain range: first a
-// resolution-independent height profile, then terminal cells (and later
-// SVG paths) drawn from it.
+// Package render draws timeline frames as a mountain range: a height
+// profile first, then terminal cells.
 package render
 
 import (
 	"cmp"
 	"slices"
 
-	"github.com/umuttopalak/summit/internal/timeline"
+	"github.com/umuttopalak/strata/internal/timeline"
 )
 
-// OtherName labels the peak that merges columns which do not fit.
-const OtherName = "…other"
+// MaxPeaks is the most mountains drawn; beyond it the smallest folders are
+// merged into one.
+const MaxPeaks = 12
 
-// OtherCol is the Peak.Col of the merged peak.
-const OtherCol = -1
+// OtherName names the merged mountain.
+const OtherName = "other"
 
-// Peak is one mountain in the range.
-type Peak struct {
-	Name  string
-	Value int64
-	Col   int // timeline column id, stable across frames; OtherCol if merged
+// Slot is one mountain: a folder, or several merged into OtherName.
+type Slot struct {
+	Name string
+	Cols []int // timeline column ids
 }
 
-// Select picks the peaks to draw from a frame: every non-empty column, in
-// order of first appearance, so the oldest parts of the project sit on the
-// left and new folders rise on the right. When there are more than limit,
-// the smallest are merged into one OtherName peak at the right end.
-func Select(f timeline.Frame, cols []string, limit int) []Peak {
-	limit = max(limit, 1)
-	var peaks []Peak
-	for i, v := range f.Totals {
-		if v > 0 {
-			peaks = append(peaks, Peak{Name: cols[i], Value: v, Col: i})
+// Layout fixes where each mountain stands and the height scale for the
+// whole replay, so mountains neither move nor rescale while they grow.
+type Layout struct {
+	Slots []Slot // left to right
+	Max   int64  // largest slot total in any frame
+}
+
+// NewLayout ranks folders by their size at the end of the history (then by
+// the largest size they ever reached), keeps the top MaxPeaks-1 (merging
+// the rest when there are more than MaxPeaks) and arranges them with the
+// largest in the middle and the others alternating right and left. The
+// replay thus grows into a range that rises towards its centre, while
+// folders that were deleted along the way rise and erode near the edges.
+func NewLayout(tl *timeline.Timeline) Layout {
+	final := tl.Frames[len(tl.Frames)-1]
+	var ranked []int
+	for col, peak := range tl.Peak {
+		if peak > 0 {
+			ranked = append(ranked, col)
 		}
 	}
-	if len(peaks) <= limit {
-		return peaks
-	}
-
-	bySize := slices.Clone(peaks)
-	slices.SortFunc(bySize, func(a, b Peak) int {
-		return cmp.Or(cmp.Compare(b.Value, a.Value), cmp.Compare(a.Col, b.Col))
+	slices.SortStableFunc(ranked, func(a, b int) int {
+		return cmp.Or(cmp.Compare(final.Total(b), final.Total(a)), cmp.Compare(tl.Peak[b], tl.Peak[a]))
 	})
-	keep := make(map[int]bool, limit-1)
-	for _, p := range bySize[:limit-1] {
-		keep[p.Col] = true
-	}
 
-	out := make([]Peak, 0, limit)
-	other := Peak{Name: OtherName, Col: OtherCol}
-	for _, p := range peaks {
-		if keep[p.Col] {
-			out = append(out, p)
-		} else {
-			other.Value += p.Value
+	var slots []Slot
+	if len(ranked) > MaxPeaks {
+		for _, col := range ranked[:MaxPeaks-1] {
+			slots = append(slots, Slot{Name: tl.Columns[col], Cols: []int{col}})
+		}
+		slots = append(slots, Slot{Name: OtherName, Cols: slices.Clone(ranked[MaxPeaks-1:])})
+	} else {
+		for _, col := range ranked {
+			slots = append(slots, Slot{Name: tl.Columns[col], Cols: []int{col}})
 		}
 	}
-	return append(out, other)
+
+	l := Layout{Slots: centreOut(slots)}
+	for _, f := range tl.Frames {
+		for _, v := range l.Values(f) {
+			l.Max = max(l.Max, v)
+		}
+	}
+	return l
+}
+
+// centreOut places ranked[0] in the middle, ranked[1] to its right,
+// ranked[2] to its left, and so on outwards.
+func centreOut(ranked []Slot) []Slot {
+	var left, right []Slot
+	for i, s := range ranked {
+		if i%2 == 1 {
+			right = append(right, s)
+		} else {
+			left = append(left, s)
+		}
+	}
+	slices.Reverse(left)
+	return append(left, right...)
+}
+
+// Values returns each slot's line count in a frame.
+func (l Layout) Values(f timeline.Frame) []int64 {
+	out := make([]int64, len(l.Slots))
+	for i, s := range l.Slots {
+		for _, col := range s.Cols {
+			out[i] += f.Total(col)
+		}
+	}
+	return out
+}
+
+// Touched returns, per slot, the commit number of its most recent change.
+func (l Layout) Touched(f timeline.Frame) []int {
+	out := make([]int, len(l.Slots))
+	for i, s := range l.Slots {
+		for _, col := range s.Cols {
+			out[i] = max(out[i], f.LastTouched(col))
+		}
+	}
+	return out
 }

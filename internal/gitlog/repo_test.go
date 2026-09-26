@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/umuttopalak/summit/internal/testutil"
+	"github.com/umuttopalak/strata/internal/testutil"
 )
 
 func TestOpenRepo(t *testing.T) {

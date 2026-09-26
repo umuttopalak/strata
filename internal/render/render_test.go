@@ -2,15 +2,18 @@ package render
 
 import (
 	"flag"
+	"fmt"
 	"math"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
-	"unicode/utf8"
+	"time"
 
-	"github.com/umuttopalak/summit/internal/timeline"
+	"github.com/charmbracelet/x/ansi"
+
+	"github.com/umuttopalak/strata/internal/timeline"
 )
 
 var update = flag.Bool("update", false, "rewrite golden files")
@@ -19,175 +22,323 @@ func near(a, b float64) bool { return math.Abs(a-b) < 1e-9 }
 
 func TestScale(t *testing.T) {
 	tests := []struct {
-		v, ceiling int64
-		want       float64
+		v, max int64
+		want   float64
 	}{
 		{0, 100, 0},
 		{-5, 100, 0},
 		{5, 0, 0},
 		{100, 100, 1},
-		{200, 100, 1}, // above the ceiling clamps
-		{10_000, 100_000, 0.75},
-		{1_000, 100_000, 0.5},
-		{1, 100_000_000, minHeight},
+		{200, 100, 1},
+		{9, 99, math.Log(10) / math.Log(100)},
 	}
 	for _, tt := range tests {
-		if got := Scale(tt.v, tt.ceiling); !near(got, tt.want) {
-			t.Errorf("Scale(%d, %d) = %v, want %v", tt.v, tt.ceiling, got, tt.want)
+		if got := Scale(tt.v, tt.max); !near(got, tt.want) {
+			t.Errorf("Scale(%d, %d) = %v, want %v", tt.v, tt.max, got, tt.want)
 		}
 	}
 }
 
-func frameOf(totals ...int64) timeline.Frame {
-	f := timeline.Frame{Totals: totals}
-	for _, v := range totals {
-		f.Ceiling = max(f.Ceiling, v)
+func TestCentreOut(t *testing.T) {
+	var ranked []Slot
+	for _, n := range []string{"A", "B", "C", "D", "E"} {
+		ranked = append(ranked, Slot{Name: n})
 	}
-	return f
-}
-
-func names(ps []Peak) []string {
-	var out []string
-	for _, p := range ps {
-		out = append(out, p.Name)
+	var got []string
+	for _, s := range centreOut(ranked) {
+		got = append(got, s.Name)
 	}
-	return out
-}
-
-func TestSelect(t *testing.T) {
-	cols := []string{"a", "b", "c", "d", "e"}
-	f := frameOf(50, 0, 10, 300, 20)
-
-	if got := names(Select(f, cols, 10)); !slices.Equal(got, []string{"a", "c", "d", "e"}) {
-		t.Errorf("all fit: %v", got)
-	}
-
-	got := Select(f, cols, 3)
-	if n := names(got); !slices.Equal(n, []string{"a", "d", OtherName}) {
-		t.Fatalf("merged: %v", n)
-	}
-	if other := got[2]; other.Value != 30 || other.Col != OtherCol {
-		t.Errorf("other = %+v, want 30 lines", other)
-	}
-
-	if n := names(Select(f, cols, 0)); !slices.Equal(n, []string{OtherName}) {
-		t.Errorf("limit 0: %v", n)
-	}
-	if n := names(Select(frameOf(0, 0), cols, 3)); len(n) != 0 {
-		t.Errorf("empty frame: %v", n)
+	if want := []string{"E", "C", "A", "B", "D"}; !slices.Equal(got, want) {
+		t.Fatalf("order = %v, want %v", got, want)
 	}
 }
 
-func TestShape(t *testing.T) {
-	peaks := []Peak{{"a", 1000, 0}, {"b", 100_000, 1}, {"c", 10, 2}}
-	ter := Shape(peaks, 100_000, 90, 40)
+// timelineOf builds a timeline straight from frames of totals.
+func timelineOf(cols []string, frames ...[]int64) *timeline.Timeline {
+	tl := &timeline.Timeline{Columns: cols, Peak: make([]int64, len(cols)), Commits: len(frames) - 1}
+	for i, totals := range frames {
+		f := timeline.Frame{Commit: i, Totals: totals, Touched: make([]int, len(totals))}
+		for c, v := range totals {
+			tl.Peak[c] = max(tl.Peak[c], v)
+			f.Touched[c] = i
+		}
+		if i > 0 {
+			f.Caption = &timeline.Caption{Author: "Ada", Subject: fmt.Sprintf("commit %d", i),
+				Time: time.Date(2020, time.Month(i), 1, 0, 0, 0, 0, time.UTC), Added: 10 * i, Deleted: i}
+		}
+		tl.Frames = append(tl.Frames, f)
+	}
+	return tl
+}
 
-	for i, p := range peaks {
-		// Samples are centred on cells; slot centres fall between two cells.
-		c := ter.Centers[i]
-		if !near(c, float64(i)*30+15) {
-			t.Errorf("%s centre = %v", p.Name, c)
-		}
-		x := int(c)
-		want := Scale(p.Value, 100_000)
-		if got := ter.Heights[x]; got > want+1e-9 || got < want*0.95 {
-			t.Errorf("%s summit = %v, want about %v", p.Name, got, want)
-		}
-		if ter.Owner[x] != i {
-			t.Errorf("%s summit owned by %d", p.Name, ter.Owner[x])
-		}
+func TestNewLayout(t *testing.T) {
+	var cols []string
+	var final []int64
+	for i := range 15 {
+		cols = append(cols, fmt.Sprintf("d%02d", i))
+		final = append(final, int64(i+1)*10) // d14 is the largest
 	}
-	for x, h := range ter.Heights {
-		if h < 0 || h > 1 {
-			t.Fatalf("height[%d] = %v out of range", x, h)
-		}
-		if (h == 0) != (ter.Owner[x] == -1) {
-			t.Fatalf("sample %d: height %v with owner %d", x, h, ter.Owner[x])
-		}
-	}
-	// There must be a valley between the tall peak and its neighbours.
-	if valley := ter.Heights[30]; valley >= ter.Heights[45]*0.8 {
-		t.Errorf("no valley: %v vs summit %v", valley, ter.Heights[45])
-	}
+	transient := make([]int64, 15)
+	transient[0] = 5000 // d00 was huge once, now small
+	tl := timelineOf(cols, make([]int64, 15), transient, final)
+	l := NewLayout(tl)
 
-	empty := Shape(nil, 100, 10, 10)
-	if len(empty.Heights) != 10 || slices.Max(empty.Heights) != 0 {
-		t.Errorf("empty terrain = %+v", empty)
+	if len(l.Slots) != MaxPeaks {
+		t.Fatalf("slots = %d, want %d", len(l.Slots), MaxPeaks)
+	}
+	// With an even count the largest stands just left of the centre.
+	mid := l.Slots[(len(l.Slots)-1)/2]
+	if mid.Name != "d14" {
+		t.Errorf("middle slot = %s, want the largest final folder d14", mid.Name)
+	}
+	var other *Slot
+	for i := range l.Slots {
+		if l.Slots[i].Name == OtherName {
+			other = &l.Slots[i]
+		}
+	}
+	// Ranked by final size: d14..d04 kept, d03..d00 merged.
+	if other == nil || len(other.Cols) != 4 {
+		t.Fatalf("other = %+v, want 4 merged columns", other)
+	}
+	if l.Max != 5000 {
+		t.Errorf("Max = %d, want 5000 (the transient peak)", l.Max)
+	}
+	if vals := l.Values(tl.Frames[1]); slices.Max(vals) != 5000 {
+		t.Errorf("values = %v", vals)
 	}
 }
 
-func TestRasterize(t *testing.T) {
-	ter := Terrain{Heights: []float64{0, 0.5, 1, 1.0 / 16}, Owner: []int{-1, 0, 1, 2}}
-	cells, owner := rasterize(ter, 2)
-	got := []string{string(cells[0]), string(cells[1])}
-	want := []string{"  █ ", " ██▁"}
-	if !slices.Equal(got, want) {
-		t.Fatalf("cells = %q, want %q", got, want)
+func TestNewLayoutFewFolders(t *testing.T) {
+	tl := timelineOf([]string{"a", "gone", "b"}, []int64{0, 0, 0}, []int64{10, 0, 0}, []int64{50, 0, 20})
+	l := NewLayout(tl)
+	var names []string
+	for _, s := range l.Slots {
+		names = append(names, s.Name)
 	}
-	if !slices.Equal(owner[0], []int{-1, -1, 1, -1}) || !slices.Equal(owner[1], []int{-1, 0, 1, 2}) {
-		t.Fatalf("owner = %v", owner)
+	// "gone" never had lines, so it gets no mountain; the larger "a" takes
+	// the centre-left position and "b" goes to its right.
+	if want := []string{"a", "b"}; !slices.Equal(names, want) {
+		t.Fatalf("slots = %v, want %v", names, want)
 	}
 }
 
-func TestShorten(t *testing.T) {
+func TestHeights(t *testing.T) {
+	const width, rows = 90, 20.0
+	h, owner := Heights([]int64{1000, 1000, 1000}, 1000, width, rows)
+
+	for x, v := range h {
+		if v < 0 || v > rows {
+			t.Fatalf("h[%d] = %v out of range", x, v)
+		}
+	}
+	for i := range 3 {
+		c := i*30 + 15
+		// The summit is the peak's own height plus a little from its
+		// neighbours, within the ±6% texture.
+		if h[c] < rows*peakFill*0.94 || owner[c] != i {
+			t.Errorf("summit %d: h = %v owner = %d", i, h[c], owner[c])
+		}
+	}
+	// Between equal peaks the slopes meet in a valley, not a plateau.
+	if valley := h[30]; valley > h[15]*0.8 {
+		t.Errorf("valley %v too high next to summit %v", valley, h[15])
+	}
+	if h[30] < 1 {
+		t.Errorf("valley %v: neighbouring peaks should join into a ridge", h[30])
+	}
+
+	// Empty input and zero values produce flat ground.
+	h, owner = Heights(nil, 100, 10, rows)
+	if slices.Max(h) != 0 || slices.Max(owner) != -1 {
+		t.Errorf("empty: %v %v", h, owner)
+	}
+	h, _ = Heights([]int64{0, 0}, 100, 10, rows)
+	if slices.Max(h) != 0 {
+		t.Errorf("zeros: %v", h)
+	}
+}
+
+func TestHeightsLogScale(t *testing.T) {
+	// Drawn alone so no neighbouring slope adds to them.
+	h, _ := Heights([]int64{10}, 100_000, 200, 40)
+	small := h[100]
+	h, _ = Heights([]int64{100_000}, 100_000, 200, 40)
+	large := h[100]
+	// log(11)/log(100001) ≈ 0.21: small folders stay visible.
+	if small < 40*peakFill*0.18 || small > 40*peakFill*0.26 {
+		t.Errorf("small folder height = %v", small)
+	}
+	if large < 40*peakFill*0.94 {
+		t.Errorf("large folder height = %v", large)
+	}
+}
+
+func TestHeightsCentresLargest(t *testing.T) {
+	for n := 1; n <= 12; n++ {
+		values := make([]int64, n)
+		for i := range values {
+			values[i] = 10
+		}
+		mid := (n - 1) / 2
+		values[mid] = 10_000
+		h, owner := Heights(values, 10_000, 120, 30)
+		// The texture may shift the very highest cell a little on broad
+		// hills, but the middle column belongs to the largest folder and
+		// stands near full height.
+		if owner[60] != mid || h[60] < 30*peakFill*0.93 {
+			t.Errorf("n=%d: middle column owner %d height %v", n, owner[60], h[60])
+		}
+	}
+}
+
+func TestTextureStretchesWithSpread(t *testing.T) {
+	// Narrow hills keep the spec's ripple unchanged.
+	for x := range 20 {
+		want := 0.035*math.Sin(float64(x)*1.7) + 0.025*math.Sin(float64(x)*0.63)
+		if got := texture(x, 5); !near(got, want) {
+			t.Fatalf("texture(%d, 5) = %v, want %v", x, got, want)
+		}
+	}
+	// Wide hills change little from one column to the next.
+	for x := range 100 {
+		if d := math.Abs(texture(x+1, 30) - texture(x, 30)); d > 0.03 {
+			t.Fatalf("texture jumps %v between columns %d and %d", d, x, x+1)
+		}
+	}
+}
+
+func TestCellAt(t *testing.T) {
 	tests := []struct {
-		in   string
-		n    int
-		want string
+		h, level float64
+		want     Cell
 	}{
-		{"src", 10, "src"},
-		{"node_modules/lodash", 10, "…/lodash"},
-		{"node_modules/lodash", 7, "lodash"},
-		{"node_modules/lodash", 4, "lod…"},
-		{"verylongname", 5, "very…"},
-		{"x", 1, "x"},
-		{"xy", 1, "…"},
+		{3, 3, Rock},
+		{3.2, 3, Rock},
+		{2.5, 3, RockHalf},
+		{2.7, 3, RockHalf},
+		{2.49, 3, Sky},
+		{0, 1, Sky},
 	}
 	for _, tt := range tests {
-		if got := shorten(tt.in, tt.n); got != tt.want {
-			t.Errorf("shorten(%q, %d) = %q, want %q", tt.in, tt.n, got, tt.want)
+		if got := cellAt(tt.h, tt.level); got != tt.want {
+			t.Errorf("cellAt(%v, %v) = %v, want %v", tt.h, tt.level, got, tt.want)
 		}
 	}
 }
 
-func TestDrawDimensions(t *testing.T) {
-	cols := []string{"src", "docs", "a-very-long-folder-name"}
-	for _, size := range [][2]int{{1, 1}, {7, 3}, {80, 20}, {200, 50}} {
-		p := Draw(frameOf(100, 20, 5), cols, size[0], size[1])
-		lines := p.Lines()
-		if len(lines) != size[1]+2 {
-			t.Fatalf("%v: %d lines", size, len(lines))
+func TestSnowy(t *testing.T) {
+	const rows = 20.0
+	tests := []struct {
+		name    string
+		h       float64
+		age     int
+		commits int
+		want    bool
+	}{
+		{"very tall", 15, 0, 60, true},
+		{"tall and old", 10, 10, 60, true},
+		{"tall but recent", 10, 9, 60, false},
+		{"old but low", 8, 50, 60, false},
+		{"low and recent", 3, 0, 60, false},
+	}
+	for _, tt := range tests {
+		if got := snowy(tt.h, rows, tt.age, tt.commits); got != tt.want {
+			t.Errorf("%s: snowy = %v", tt.name, got)
 		}
-		for i, l := range lines {
-			if n := utf8.RuneCountInString(l); n != size[0] {
-				t.Fatalf("%v: line %d is %d cells wide: %q", size, i, n, l)
+	}
+}
+
+func TestDrawSnowOnSummit(t *testing.T) {
+	tl := timelineOf([]string{"a"}, []int64{0}, []int64{1000})
+	p := Draw(tl, NewLayout(tl), 1, "repo", 30, 24)
+	for x := range p.Width {
+		top := -1
+		for r := range p.Cells {
+			if p.Cells[r][x] != Sky {
+				top = r
+				break
 			}
 		}
-		if styled := p.Styled(); len(styled) != len(lines) {
-			t.Fatalf("%v: styled has %d lines", size, len(styled))
+		if top < 0 {
+			continue
 		}
+		if c := p.Cells[top][x]; c == Snow || c == SnowHalf {
+			for r := top + 1; r < len(p.Cells); r++ {
+				if p.Cells[r][x] == Snow || p.Cells[r][x] == SnowHalf {
+					t.Fatalf("column %d has snow below its top cell", x)
+				}
+			}
+			return
+		}
+	}
+	t.Fatal("a peak at full height should be snow-capped")
+}
+
+func TestDrawChrome(t *testing.T) {
+	tl := timelineOf([]string{"src", "docs"}, []int64{0, 0}, []int64{400, 30}, []int64{900, 60})
+	tl.Frames[2].Caption.Subject = strings.Repeat("a very long commit message ", 10)
+	l := NewLayout(tl)
+
+	for _, size := range [][2]int{{1, 1}, {8, 5}, {20, 6}, {80, 24}, {200, 60}} {
+		for i := range tl.Frames {
+			p := Draw(tl, l, i, "my-repo", size[0], size[1])
+			plain, styled := p.Lines(), p.Styled()
+			if len(plain) != max(size[1]-1, 4) || len(styled) != len(plain) {
+				t.Fatalf("%v frame %d: %d plain, %d styled lines", size, i, len(plain), len(styled))
+			}
+			for j := range plain {
+				if w := ansi.StringWidth(plain[j]); w != size[0] {
+					t.Fatalf("%v frame %d: plain line %d is %d wide: %q", size, i, j, w, plain[j])
+				}
+				if ansi.Strip(styled[j]) != plain[j] {
+					t.Fatalf("%v frame %d: styled line %d differs:\n%q\n%q", size, i, j, ansi.Strip(styled[j]), plain[j])
+				}
+			}
+		}
+	}
+
+	p := Draw(tl, l, 2, "my-repo", 80, 24)
+	lines := p.Lines()
+	if !strings.HasPrefix(lines[0], "$ strata my-repo") || !strings.HasSuffix(lines[0], "2020-02") {
+		t.Errorf("header = %q", lines[0])
+	}
+	footer := lines[len(lines)-1]
+	if !strings.HasSuffix(footer, "commit 2/2") || !strings.Contains(footer, "…") ||
+		!strings.HasPrefix(footer, "2020-02-01 · Ada · +20 -2 · a very long") {
+		t.Errorf("footer = %q", footer)
+	}
+	// Frame 0 has no commit yet but already shows the date it starts from.
+	if first := Draw(tl, l, 0, "my-repo", 80, 24).Lines(); !strings.HasSuffix(first[0], "2020-01") ||
+		!strings.HasSuffix(first[len(first)-1], "commit 0/2") {
+		t.Errorf("frame 0 = %q / %q", first[0], first[len(first)-1])
 	}
 }
 
-// Golden files pin down the look of the terrain. After an intended change
-// in shape, inspect the diff and run: go test ./internal/render -update
+// Golden files pin down the look. After an intended change, inspect the
+// diff and run: go test ./internal/render -update
 func TestGolden(t *testing.T) {
-	cols := []string{"src", "docs", "(root)", "tests", "vendor", "tools", "web", "api"}
-	tests := []struct {
-		name          string
-		frame         timeline.Frame
+	cols := []string{"src", "docs", "(root)", "tests", "vendor", "tools"}
+	tl := timelineOf(cols,
+		[]int64{0, 0, 0, 0, 0, 0},
+		[]int64{120, 10, 30, 0, 0, 0},
+		[]int64{5_000, 300, 80, 900, 20_000, 0},
+		[]int64{40_000, 2_500, 150, 9_000, 0, 60},
+	)
+	// vendor was dropped in the last commit; docs was not touched since 1.
+	tl.Frames[3].Touched[1] = 1
+	l := NewLayout(tl)
+
+	for _, tt := range []struct {
+		frame         int
 		width, height int
 	}{
-		{"empty", frameOf(), 40, 6},
-		{"single", frameOf(5000), 40, 10},
-		{"range", frameOf(120_000, 3_000, 400, 25_000), 80, 16},
-		{"crowded", frameOf(900, 12_000, 50, 7_000, 60_000, 3, 800, 20_000), 60, 12},
-		{"shrunk", timeline.Frame{Totals: []int64{800, 40}, Ceiling: 100_000}, 40, 8},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := strings.Join(Draw(tt.frame, cols, tt.width, tt.height).Lines(), "\n") + "\n"
-			path := filepath.Join("testdata", "golden", tt.name+".txt")
+		{0, 40, 8}, {1, 60, 14}, {2, 60, 14}, {3, 60, 14}, {3, 100, 24},
+	} {
+		name := fmt.Sprintf("frame%d_%dx%d", tt.frame, tt.width, tt.height)
+		t.Run(name, func(t *testing.T) {
+			got := strings.Join(Draw(tl, l, tt.frame, "demo", tt.width, tt.height).Lines(), "\n") + "\n"
+			path := filepath.Join("testdata", "golden", name+".txt")
 			if *update {
 				if err := os.WriteFile(path, []byte(got), 0o644); err != nil {
 					t.Fatal(err)

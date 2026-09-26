@@ -1,10 +1,10 @@
-// Package timeline turns a stream of commits into fixed-interval frames of
-// per-folder line counts, ready to be drawn.
+// Package timeline replays a repository's history into frames of
+// per-folder line counts, one frame per commit (or per small group of
+// commits in long histories).
 package timeline
 
 import (
 	"strings"
-	"sync"
 	"time"
 )
 
@@ -37,20 +37,18 @@ type Caption struct {
 	Author  string
 	Subject string
 	Time    time.Time // author date
+	Added   int
+	Deleted int
 }
 
-// Frame is the state of the repository at the end of one time slice.
+// Frame is the repository's state after a number of commits.
 // Slices are indexed by column id (see Timeline.Columns) and hold only the
 // columns known at that point; later columns are implicitly zero.
 type Frame struct {
-	Index   int
-	Time    time.Time // end of the slice
-	Totals  []int64   // lines per column, never negative
-	Touched []int64   // unix time each column last changed, 0 if unknown
-	Max     int64     // largest column total in this or any earlier frame
-	Ceiling int64     // scale for drawing: follows Max up at once, eases down slowly
-	Commits int       // commits that landed in this slice
-	Caption *Caption  // last commit of the slice, nil for a quiet slice
+	Commit  int      // commits applied so far; 0 is the state before the first
+	Totals  []int64  // lines per column, never negative
+	Touched []int    // commit number that last changed each column, 0 if none
+	Caption *Caption // last commit applied in this frame, nil for frame 0
 }
 
 // Total returns the line count of a column, 0 if it did not exist yet.
@@ -61,72 +59,19 @@ func (f Frame) Total(col int) int64 {
 	return 0
 }
 
-// Timeline collects frames as they are built, so a reader (the player) can
-// show early frames while later ones are still being computed. It is safe
-// for one writer and any number of readers.
+// LastTouched returns the commit number that last changed a column.
+func (f Frame) LastTouched(col int) int {
+	if col < len(f.Touched) {
+		return f.Touched[col]
+	}
+	return 0
+}
+
+// Timeline is a fully scanned history.
 type Timeline struct {
-	mu       sync.RWMutex
-	columns  []string
-	frames   []Frame
-	expected int
-	done     bool
-	err      error
-}
-
-// Len returns the number of frames built so far.
-func (t *Timeline) Len() int {
-	t.mu.RLock()
-	defer t.mu.RUnlock()
-	return len(t.frames)
-}
-
-// At returns frame i; it panics if i >= Len().
-func (t *Timeline) At(i int) Frame {
-	t.mu.RLock()
-	defer t.mu.RUnlock()
-	return t.frames[i]
-}
-
-// Columns returns the column names in order of first appearance. The
-// returned slice must not be modified.
-func (t *Timeline) Columns() []string {
-	t.mu.RLock()
-	defer t.mu.RUnlock()
-	return t.columns
-}
-
-// Expected returns how many frames the finished timeline will have, or 0
-// before the history's bounds are known.
-func (t *Timeline) Expected() int {
-	t.mu.RLock()
-	defer t.mu.RUnlock()
-	return t.expected
-}
-
-// Done reports whether building has finished, and with which error.
-func (t *Timeline) Done() (bool, error) {
-	t.mu.RLock()
-	defer t.mu.RUnlock()
-	return t.done, t.err
-}
-
-func (t *Timeline) setExpected(n int) {
-	t.mu.Lock()
-	t.expected = n
-	t.mu.Unlock()
-}
-
-// push publishes a frame. Old frames and column names are never mutated,
-// which is what makes handing out slices to readers safe.
-func (t *Timeline) push(f Frame, columns []string) {
-	t.mu.Lock()
-	t.frames = append(t.frames, f)
-	t.columns = columns
-	t.mu.Unlock()
-}
-
-func (t *Timeline) finish(err error) {
-	t.mu.Lock()
-	t.done, t.err = true, err
-	t.mu.Unlock()
+	Columns []string // in order of first appearance
+	Frames  []Frame  // Frames[0] is the state before the first commit
+	Commits int      // commits in the replay
+	Peak    []int64  // largest total each column ever reached
+	Depth   int      // folder depth the columns were grouped at
 }

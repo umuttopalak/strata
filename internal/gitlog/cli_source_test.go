@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/umuttopalak/summit/internal/testutil"
+	"github.com/umuttopalak/strata/internal/testutil"
 )
 
 // historyRepo builds this history. Walk follows main only, so the feature

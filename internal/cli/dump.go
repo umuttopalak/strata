@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/umuttopalak/summit/internal/gitlog"
-	"github.com/umuttopalak/summit/internal/timeline"
+	"github.com/umuttopalak/strata/internal/gitlog"
+	"github.com/umuttopalak/strata/internal/timeline"
 )
 
 // dump prints one line per commit plus a summary; a debugging aid for the
@@ -67,47 +67,18 @@ func dump(ctx context.Context, out io.Writer, src gitlog.Source, opts gitlog.Log
 	return nil
 }
 
-// dumpFrames builds the timeline and prints every frame that has commits,
-// with its largest columns.
-func dumpFrames(ctx context.Context, out io.Writer, src gitlog.Source, log gitlog.LogOptions, opts timeline.Options) error {
+// dumpFrames prints every frame with its largest columns.
+func dumpFrames(out io.Writer, tl *timeline.Timeline) error {
 	w := bufio.NewWriter(out)
 	defer w.Flush()
-
-	start := time.Now()
-	tl := &timeline.Timeline{}
-	errc := make(chan error, 1)
-	go func() { errc <- timeline.Build(ctx, src, log, opts, tl) }()
-
-	// Poll only to measure how soon a player could show something.
-	var first time.Duration
-	for tl.Len() == 0 {
-		if done, _ := tl.Done(); done {
-			break
+	for _, f := range tl.Frames {
+		date := "          "
+		if f.Caption != nil {
+			date = f.Caption.Time.Format("2006-01-02")
 		}
-		time.Sleep(time.Millisecond)
+		fmt.Fprintf(w, "%6d  %s  %s\n", f.Commit, date, topColumns(f, tl.Columns, 5))
 	}
-	first = time.Since(start)
-	if err := <-errc; err != nil {
-		return err
-	}
-
-	cols := tl.Columns()
-	quiet := 0
-	for i := range tl.Len() {
-		f := tl.At(i)
-		if f.Commits == 0 {
-			quiet++
-			continue
-		}
-		fmt.Fprintf(w, "%4d  %s  %4d commits  %s\n", f.Index, f.Time.Format("2006-01-02"),
-			f.Commits, topColumns(f, cols, 5))
-	}
-	last := tl.At(tl.Len() - 1)
-	fmt.Fprintf(w, "\n%d frames (%d quiet), %d columns, tallest %d lines\n",
-		tl.Len(), quiet, len(cols), last.Max)
-	fmt.Fprintf(w, "final: %s\n", topColumns(last, cols, 10))
-	fmt.Fprintf(w, "first frame after %s, total %s\n",
-		first.Round(time.Millisecond), time.Since(start).Round(time.Millisecond))
+	fmt.Fprintf(w, "\n%d commits in %d frames, %d columns\n", tl.Commits, len(tl.Frames), len(tl.Columns))
 	return nil
 }
 
