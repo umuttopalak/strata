@@ -1,0 +1,13 @@
+aaa11115778368001577836700Ada Lovelaceinitial commit
+
+10	0	README.md
+120	0	src/main.go
+bbb22215779232001577923200Grace Hopperadd assets: logo	and docs
+
+-	-	assets/logo.png
+3	1	"docs/tab\there.md"
+7	0	docs/ünicode.md
+ccc33315780096001578009600Ada Lovelace
+ddd44415780960001578096000Linusremove main
+
+0	120	src/main.go
