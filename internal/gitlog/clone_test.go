@@ -92,3 +92,33 @@ func TestCloneFailure(t *testing.T) {
 		t.Fatalf("err = %v, want ErrCloneFailed", err)
 	}
 }
+
+func TestProgressWriter(t *testing.T) {
+	var got []CloneProgress
+	w := &progressWriter{report: func(p CloneProgress) { got = append(got, p) }}
+	// Git rewrites a line with \r and ends phases with \n; writes may split
+	// anywhere.
+	chunks := []string{
+		"Cloning into bare repository '/tmp/x'...\n",
+		"remote: Enumerating objects: 4142, done.\n",
+		"remote: Counting objects:  50% (698/1396)\rremote: Counting objects: 100% (1396/1396), done.\n",
+		"remote: Compressing objects: 100% (352/352), done.\n",
+		"Receiving objects:  12% (498/4142), 180.00 KiB | 350.00 KiB/s\rReceiving obj",
+		"ects: 100% (4142/4142), 1.15 MiB | 1.35 MiB/s, done.\n",
+		"Resolving deltas:  40% (1016/2538)\r",
+	}
+	for _, c := range chunks {
+		w.Write([]byte(c))
+	}
+	want := []CloneProgress{
+		{"preparing", 50, ""},
+		{"preparing", 100, ""},
+		{"preparing", 100, ""},
+		{"receiving", 12, "180.00 KiB"},
+		{"receiving", 100, "1.15 MiB"},
+		{"resolving", 40, ""},
+	}
+	if !slices.Equal(got, want) {
+		t.Errorf("progress:\n got %v\nwant %v", got, want)
+	}
+}

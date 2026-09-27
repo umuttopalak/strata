@@ -101,11 +101,22 @@ func cloneRemote(ctx context.Context, log io.Writer, arg string) (dir string, cl
 	cleanup = func() { _ = gitlog.RemoveClone(tmp) }
 
 	url := gitlog.RemoteURL(arg)
-	fmt.Fprintf(log, "cloning %s…\n", url)
-	var progress io.Writer
-	if term.IsTerminal(int(os.Stderr.Fd())) {
-		progress = os.Stderr
-	}
 	dir = filepath.Join(tmp, "repo.git")
-	return dir, cleanup, gitlog.Clone(ctx, url, dir, progress)
+	if !term.IsTerminal(int(os.Stderr.Fd())) {
+		fmt.Fprintf(log, "cloning %s…\n", url)
+		return dir, cleanup, gitlog.Clone(ctx, url, dir, nil)
+	}
+
+	// One line, rewritten in place and cleared when the clone is done.
+	show := func(s string) { fmt.Fprintf(log, "\r\x1b[K%s", s) }
+	show("cloning " + url + "…")
+	err = gitlog.Clone(ctx, url, dir, func(p gitlog.CloneProgress) {
+		line := fmt.Sprintf("cloning %s · %s %d%%", url, p.Phase, p.Percent)
+		if p.Size != "" {
+			line += " · " + p.Size
+		}
+		show(line)
+	})
+	show("")
+	return dir, cleanup, err
 }

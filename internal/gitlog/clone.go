@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 )
 
@@ -45,10 +46,18 @@ func RepoName(url string) string {
 	return strings.TrimSuffix(url, ".git")
 }
 
+// CloneProgress is one progress report from git during a clone.
+type CloneProgress struct {
+	Phase   string // "preparing", "receiving" or "resolving"
+	Percent int
+	Size    string // amount received so far, e.g. "1.15 MiB", while receiving
+}
+
 // Clone fetches the default branch of url, with its full history and tags,
 // into dir as a bare repository: no working tree is checked out, which is
-// all strata needs. Git's progress goes to progress when it is not nil.
-func Clone(ctx context.Context, url, dir string, progress io.Writer) error {
+// all strata needs. If progress is not nil it is called as git reports
+// progress; git's own output is never printed.
+func Clone(ctx context.Context, url, dir string, progress func(CloneProgress)) error {
 	gitPath, err := exec.LookPath("git")
 	if err != nil {
 		return ErrGitNotFound
@@ -63,7 +72,7 @@ func Clone(ctx context.Context, url, dir string, progress io.Writer) error {
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	if progress != nil {
-		cmd.Stderr = io.MultiWriter(progress, &stderr)
+		cmd.Stderr = io.MultiWriter(&progressWriter{report: progress}, &stderr)
 	}
 	if err := cmd.Run(); err != nil {
 		if ctx.Err() != nil {
@@ -76,6 +85,39 @@ func Clone(ctx context.Context, url, dir string, progress io.Writer) error {
 		return fmt.Errorf("%s: %w: %s", url, ErrCloneFailed, msg)
 	}
 	return nil
+}
+
+// progressLine matches git's progress lines, with or without "remote: ".
+var progressLine = regexp.MustCompile(`(Counting objects|Compressing objects|Receiving objects|Resolving deltas):\s+(\d+)%(?:[^,]*,\s*([0-9.]+ [KMGT]?i?B))?`)
+
+var phases = map[string]string{
+	"Counting objects":    "preparing",
+	"Compressing objects": "preparing",
+	"Receiving objects":   "receiving",
+	"Resolving deltas":    "resolving",
+}
+
+// progressWriter turns git's progress output, whose updates are separated
+// by carriage returns, into CloneProgress reports.
+type progressWriter struct {
+	report  func(CloneProgress)
+	pending []byte
+}
+
+func (w *progressWriter) Write(b []byte) (int, error) {
+	w.pending = append(w.pending, b...)
+	for {
+		i := bytes.IndexAny(w.pending, "\r\n")
+		if i < 0 {
+			return len(b), nil
+		}
+		line := string(w.pending[:i])
+		w.pending = w.pending[i+1:]
+		if m := progressLine.FindStringSubmatch(line); m != nil {
+			pct, _ := strconv.Atoi(m[2])
+			w.report(CloneProgress{Phase: phases[m[1]], Percent: pct, Size: m[3]})
+		}
+	}
 }
 
 // RemoveClone deletes a clone made by Clone. Git writes its object files
