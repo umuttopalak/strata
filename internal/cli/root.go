@@ -25,12 +25,16 @@ type Config struct {
 	Speed float64
 	Depth int
 	Since time.Time // zero means the whole history
+	Cols  int       // --size, 0 when not given
+	Rows  int
 }
 
 type flags struct {
 	speed float64
 	depth int
 	since string
+	size  string
+	svg   string
 	dump  bool
 	dumpF bool
 	frame int
@@ -43,6 +47,12 @@ func (f flags) config(path string) (Config, error) {
 	}
 	if f.depth < 0 {
 		return cfg, fmt.Errorf("--depth must be 0 (automatic) or more (got %d)", f.depth)
+	}
+	if f.size != "" {
+		if _, err := fmt.Sscanf(f.size, "%dx%d", &cfg.Cols, &cfg.Rows); err != nil ||
+			cfg.Cols < 20 || cfg.Rows < 8 || fmt.Sprintf("%dx%d", cfg.Cols, cfg.Rows) != f.size {
+			return cfg, fmt.Errorf("--size must look like 100x30, at least 20x8 (got %q)", f.size)
+		}
 	}
 	if f.since != "" {
 		t, err := time.ParseInLocation("2006-01-02", f.since, time.Local)
@@ -67,6 +77,7 @@ peaks; a repository with all its files in the root gets a peak per file.`,
   strata ./path/to/repo       # a specific repository
   strata --speed 2 --depth 2  # faster playback, folders two levels deep
   strata --since 2020-01-01   # only history from 2020 onwards
+  strata --svg strata.svg     # animated SVG for a README (loops, no scripts)
 
 Keys while playing: space pause · ←/→ seek · +/- speed · q quit`,
 		Args:          cobra.MaximumNArgs(1),
@@ -100,8 +111,10 @@ Keys while playing: space pause · ←/→ seek · +/- speed · q quit`,
 			}
 			name := filepath.Base(repo.Root)
 			switch {
+			case f.svg != "":
+				return writeSVG(cmd.ErrOrStderr(), f.svg, tl, name, cfg)
 			case cmd.Flags().Changed("frame"):
-				return printFrame(cmd.OutOrStdout(), tl, name, f.frame)
+				return printFrame(cmd.OutOrStdout(), tl, name, f.frame, cfg)
 			case f.dumpF:
 				return dumpFrames(cmd.OutOrStdout(), tl)
 			}
@@ -114,6 +127,8 @@ Keys while playing: space pause · ←/→ seek · +/- speed · q quit`,
 	cmd.Flags().Float64Var(&f.speed, "speed", 1, "playback speed multiplier")
 	cmd.Flags().IntVar(&f.depth, "depth", 0, "folder depth that defines a peak (0 = pick automatically)")
 	cmd.Flags().StringVar(&f.since, "since", "", "start from this date (YYYY-MM-DD)")
+	cmd.Flags().StringVar(&f.svg, "svg", "", "write an animated SVG to this file instead of playing")
+	cmd.Flags().StringVar(&f.size, "size", "", "size in terminal cells for --svg and --frame, e.g. 100x30")
 	cmd.Flags().BoolVar(&f.dump, "dump", false, "print the parsed history instead of playing it")
 	cmd.Flags().BoolVar(&f.dumpF, "dump-frames", false, "print the timeline frames instead of playing them")
 	cmd.Flags().IntVar(&f.frame, "frame", -1, "print one frame (negative counts from the end) and exit")

@@ -57,7 +57,7 @@ func Play(ctx context.Context, out *os.File, tl *timeline.Timeline, opts Options
 
 	if !term.IsTerminal(fd) {
 		pic := render.Draw(tl, layout, len(tl.Frames)-1, opts.Repo, fallbackWidth, fallbackHeight)
-		_, err := io.WriteString(w, strings.Join(pic.Styled(), "\n")+"\n"+finished(tl)+"\n")
+		_, err := io.WriteString(w, strings.Join(pic.Styled(), "\n")+"\n"+render.FinishedText(tl)+"\n")
 		return err
 	}
 
@@ -121,7 +121,7 @@ func Play(ctx context.Context, out *os.File, tl *timeline.Timeline, opts Options
 		}
 	}
 	restore()
-	_, err := io.WriteString(w, "\r\n"+finished(tl)+"\n")
+	_, err := io.WriteString(w, "\r\n"+render.FinishedText(tl)+"\n")
 	return err
 }
 
@@ -189,10 +189,6 @@ func draw(w io.Writer, tl *timeline.Timeline, l render.Layout, s state, repo str
 	}
 	_, err := io.WriteString(w, b.String())
 	return err
-}
-
-func finished(tl *timeline.Timeline) string {
-	return fmt.Sprintf("✓ belgesel bitti · %d commit", tl.Commits)
 }
 
 // listen puts stdin in raw mode and streams key presses. If stdin is not a

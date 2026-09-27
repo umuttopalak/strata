@@ -11,6 +11,7 @@ import (
 	"golang.org/x/term"
 
 	"github.com/umuttopalak/strata/internal/gitlog"
+	"github.com/umuttopalak/strata/internal/player"
 	"github.com/umuttopalak/strata/internal/render"
 	"github.com/umuttopalak/strata/internal/timeline"
 )
@@ -33,7 +34,7 @@ func scan(ctx context.Context, src gitlog.Source, log gitlog.LogOptions, opts ti
 
 // printFrame prints one frame sized to the terminal: a quick way to look
 // at the renderer without animating.
-func printFrame(out io.Writer, tl *timeline.Timeline, repo string, index int) error {
+func printFrame(out io.Writer, tl *timeline.Timeline, repo string, index int, cfg Config) error {
 	if index < 0 {
 		index += len(tl.Frames)
 	}
@@ -41,7 +42,9 @@ func printFrame(out io.Writer, tl *timeline.Timeline, repo string, index int) er
 		return fmt.Errorf("--frame must be between %d and %d", -len(tl.Frames), len(tl.Frames)-1)
 	}
 	width, height := 100, 30
-	if w, h, err := term.GetSize(int(os.Stdout.Fd())); err == nil {
+	if cfg.Cols > 0 {
+		width, height = cfg.Cols, cfg.Rows
+	} else if w, h, err := term.GetSize(int(os.Stdout.Fd())); err == nil {
 		width, height = w, h
 	}
 	pic := render.Draw(tl, render.NewLayout(tl), index, repo, width, height)
@@ -50,5 +53,35 @@ func printFrame(out io.Writer, tl *timeline.Timeline, repo string, index int) er
 			return err
 		}
 	}
+	return nil
+}
+
+// writeSVG exports the replay as an animated SVG and reports its size.
+func writeSVG(log io.Writer, path string, tl *timeline.Timeline, repo string, cfg Config) error {
+	o := render.DefaultSVGOptions
+	o.Repo = repo
+	o.FrameDuration = time.Duration(float64(player.DefaultInterval) / cfg.Speed)
+	if cfg.Cols > 0 {
+		o.Cols, o.Height = cfg.Cols, cfg.Rows
+	}
+
+	f, err := os.Create(path)
+	if err != nil {
+		return err
+	}
+	if err := render.WriteSVG(f, tl, render.NewLayout(tl), o); err != nil {
+		f.Close()
+		return err
+	}
+	if err := f.Close(); err != nil {
+		return err
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		return err
+	}
+	play := o.PlayTime(len(tl.Frames))
+	fmt.Fprintf(log, "wrote %s · %d KB · %d commits in %s, then holds %s\n",
+		path, (info.Size()+1023)/1024, tl.Commits, play.Round(100*time.Millisecond), o.Hold)
 	return nil
 }

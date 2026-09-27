@@ -18,6 +18,10 @@ func TestFlagValidation(t *testing.T) {
 		{"automatic depth", flags{speed: 1, depth: 0}, ""},
 		{"negative depth", flags{speed: 1, depth: -1}, "--depth"},
 		{"bad since", flags{speed: 1, depth: 1, since: "31/01/2020"}, "--since"},
+		{"size", flags{speed: 1, size: "80x24"}, ""},
+		{"size too small", flags{speed: 1, size: "10x2"}, "--size"},
+		{"size missing height", flags{speed: 1, size: "80x"}, "--size"},
+		{"size with junk", flags{speed: 1, size: "80x24px"}, "--size"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
