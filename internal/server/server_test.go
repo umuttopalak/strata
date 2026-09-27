@@ -81,7 +81,7 @@ func newFixture(t *testing.T, queue int) fixture {
 	return fixture{srv: s, http: h, store: store}
 }
 
-func (f fixture) post(t *testing.T, body, auth string) (int, map[string]string) {
+func (f fixture) post(t *testing.T, body, auth string) (int, renderReply) {
 	t.Helper()
 	req, _ := http.NewRequest(http.MethodPost, f.http.URL+"/render", strings.NewReader(body))
 	if auth != "" {
@@ -92,7 +92,7 @@ func (f fixture) post(t *testing.T, body, auth string) (int, map[string]string) 
 		t.Fatal(err)
 	}
 	defer resp.Body.Close()
-	var out map[string]string
+	var out renderReply
 	json.NewDecoder(resp.Body).Decode(&out)
 	return resp.StatusCode, out
 }
@@ -114,11 +114,11 @@ func (f fixture) waitFor(t *testing.T, key string) ([]byte, Meta) {
 func TestRenderEndToEnd(t *testing.T) {
 	f := newFixture(t, 10)
 	code, out := f.post(t, `{"repo":"O/Good"}`, secret)
-	if code != http.StatusAccepted || out["key"] != "o/good" {
+	if code != http.StatusAccepted || out.Key != "o/good" {
 		t.Fatalf("POST = %d %v", code, out)
 	}
 	// Until the worker picks it up, a repeat request is deduplicated.
-	if code, out := f.post(t, `{"repo":"o/good"}`, secret); code != http.StatusOK || out["status"] != "already queued" {
+	if code, out := f.post(t, `{"repo":"o/good"}`, secret); code != http.StatusOK || out.Status != "already queued" {
 		t.Fatalf("repeat POST = %d %v", code, out)
 	}
 
@@ -129,6 +129,19 @@ func TestRenderEndToEnd(t *testing.T) {
 	svg, meta := f.waitFor(t, "o/good")
 	if meta.Status != "ok" || meta.Commits != 2 || meta.RenderedAt == 0 {
 		t.Errorf("meta = %+v", meta)
+	}
+	// Right after, while KV may not show the new value everywhere yet,
+	// asking again does not render it again.
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		_, out := f.post(t, `{"repo":"o/good"}`, secret)
+		if out.Status == "recently rendered" {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("repeat after render: %+v", out)
+		}
+		time.Sleep(20 * time.Millisecond)
 	}
 	if !strings.Contains(string(svg), "<animateTransform") || !strings.Contains(string(svg), ">good<") {
 		t.Errorf("unexpected SVG: %.300s", svg)
@@ -147,6 +160,31 @@ func TestRenderEndToEnd(t *testing.T) {
 	}
 }
 
+// Refusals known before cloning are answered directly and stored nowhere,
+// so made-up names cannot use up the store's daily writes.
+func TestRenderRefusalsAreImmediate(t *testing.T) {
+	f := newFixture(t, 10)
+	tests := []struct {
+		repo string
+		code int
+		want string
+	}{
+		{"o/missing", http.StatusNotFound, "not found"},
+		{"o/secret", http.StatusNotFound, "not found"},
+		{"o/big", http.StatusRequestEntityTooLarge, "too large"},
+	}
+	for _, tt := range tests {
+		code, out := f.post(t, `{"repo":"`+tt.repo+`"}`, secret)
+		if code != tt.code || len(out.Lines) == 0 || !strings.Contains(out.Lines[0], tt.want) {
+			t.Errorf("%s: %d %+v", tt.repo, code, out)
+		}
+		if _, _, err := f.store.Get(tt.repo); err == nil {
+			t.Errorf("%s: an image was stored", tt.repo)
+		}
+	}
+}
+
+// Failures found while rendering become images that say why.
 func TestRenderErrorsBecomeImages(t *testing.T) {
 	f := newFixture(t, 10)
 	ctx, cancel := context.WithCancel(context.Background())
@@ -154,9 +192,6 @@ func TestRenderErrorsBecomeImages(t *testing.T) {
 	go f.srv.Run(ctx)
 
 	tests := []struct{ repo, want string }{
-		{"o/missing", "not found"},
-		{"o/secret", "not found"},
-		{"o/big", "too large"},
 		{"o/empty", "no commits"},
 		{"o/long", "too long"},
 	}
@@ -188,7 +223,7 @@ func TestRenderRequestValidation(t *testing.T) {
 	if code, _ := f.post(t, `{"repo":"o/good"}`, secret); code != http.StatusAccepted {
 		t.Errorf("first: %d", code)
 	}
-	if code, _ := f.post(t, `{"repo":"o/other"}`, secret); code != http.StatusServiceUnavailable {
+	if code, _ := f.post(t, `{"repo":"o/empty"}`, secret); code != http.StatusServiceUnavailable {
 		t.Errorf("queue full: %d", code)
 	}
 }

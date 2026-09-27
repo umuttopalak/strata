@@ -2,6 +2,7 @@ package server
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"crypto/subtle"
 	"encoding/json"
@@ -34,6 +35,7 @@ var repoPattern = regexp.MustCompile(`^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})/[A-Za-z
 type Job struct {
 	Owner, Name string
 	Labels      bool
+	Display     string // the repository's name as GitHub spells it
 }
 
 // tooLong explains a history the server will not draw; n is 0 when the
@@ -70,8 +72,14 @@ type Server struct {
 
 	mu      sync.Mutex
 	pending map[string]bool
+	recent  map[string]time.Time // finished keys, see recentFor
 	jobs    chan Job
 }
+
+// recentFor is how long a finished render keeps answering repeat requests.
+// Workers KV takes up to a minute to show a new value everywhere, and
+// viewers in that window would otherwise trigger the same render again.
+const recentFor = 10 * time.Minute
 
 // New builds a server; call Run to start working through the queue.
 func New(cfg Config, gh *GitHub, store Store, log *slog.Logger) *Server {
@@ -81,6 +89,7 @@ func New(cfg Config, gh *GitHub, store Store, log *slog.Logger) *Server {
 			return fmt.Sprintf("https://github.com/%s/%s.git", owner, name)
 		},
 		pending: map[string]bool{},
+		recent:  map[string]time.Time{},
 		jobs:    make(chan Job, cfg.QueueSize),
 	}
 }
@@ -93,9 +102,7 @@ func (s *Server) Run(ctx context.Context) {
 			return
 		case j := <-s.jobs:
 			s.process(ctx, j)
-			s.mu.Lock()
-			delete(s.pending, j.Key())
-			s.mu.Unlock()
+			s.finish(j.Key(), time.Now())
 		}
 	}
 }
@@ -138,11 +145,77 @@ func (s *Server) handleRender(w http.ResponseWriter, r *http.Request) {
 	}
 	owner, name, _ := strings.Cut(req.Repo, "/")
 	j := Job{Owner: owner, Name: name, Labels: req.Labels}
+	reply := func(code int, status string, lines ...string) {
+		s.log.Info("render requested", "repo", req.Repo, "labels", req.Labels, "status", status)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(code)
+		json.NewEncoder(w).Encode(renderReply{Status: status, Key: j.Key(), Lines: lines})
+	}
+
+	if status, ok := s.busy(j.Key()); ok {
+		reply(http.StatusOK, status)
+		return
+	}
+	// Answer "not found" and "too large" here instead of storing an image:
+	// every stored image costs one of the few KV writes a free plan allows
+	// per day, and made-up names would otherwise use them up.
+	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
+	defer cancel()
+	info, err := s.github.Lookup(ctx, owner, name)
+	switch {
+	case errors.Is(err, ErrNotFound):
+		reply(http.StatusNotFound, "not found",
+			"repository not found, or it is private",
+			"strata can only draw public GitHub repositories here")
+		return
+	case err != nil:
+		s.log.Warn("github lookup failed", "repo", req.Repo, "err", err)
+		reply(http.StatusBadGateway, "github unavailable", "could not reach GitHub, trying again later")
+		return
+	case info.SizeKB > s.cfg.MaxRepoMB*1024:
+		reply(http.StatusRequestEntityTooLarge, "too large",
+			fmt.Sprintf("this repository is too large to draw here (%d MB, limit %d MB)", info.SizeKB/1024, s.cfg.MaxRepoMB),
+			"run strata locally or use the GitHub Action instead")
+		return
+	}
+	j.Display = info.Name
 
 	status, code := s.enqueue(j)
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(code)
-	json.NewEncoder(w).Encode(map[string]string{"status": status, "key": j.Key()})
+	reply(code, status)
+}
+
+// renderReply is the JSON answer to POST /render. Lines explain a refusal
+// and are what the Worker writes into its image.
+type renderReply struct {
+	Status string   `json:"status"`
+	Key    string   `json:"key"`
+	Lines  []string `json:"lines,omitempty"`
+}
+
+// finish moves a key from pending to recent, dropping expired entries.
+func (s *Server) finish(key string, now time.Time) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.pending, key)
+	s.recent[key] = now
+	for k, at := range s.recent {
+		if now.Sub(at) > recentFor {
+			delete(s.recent, k)
+		}
+	}
+}
+
+// busy reports whether a key is queued, running, or was just rendered.
+func (s *Server) busy(key string) (status string, ok bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.pending[key] {
+		return "already queued", true
+	}
+	if at, done := s.recent[key]; done && time.Since(at) < recentFor {
+		return "recently rendered", true
+	}
+	return "", false
 }
 
 // enqueue adds a job unless the same one is already waiting or running.
@@ -184,7 +257,7 @@ func (s *Server) handleSVG(w http.ResponseWriter, r *http.Request) {
 }
 
 // process renders one job and stores the result, or an image explaining
-// why there is none.
+// why there is none. The repository was checked when the job was queued.
 func (s *Server) process(ctx context.Context, j Job) {
 	ctx, cancel := context.WithTimeout(ctx, s.cfg.JobTimeout)
 	defer cancel()
@@ -211,19 +284,6 @@ func (s *Server) render(ctx context.Context, j Job) ([]byte, Meta, time.Duration
 		var b bytes.Buffer
 		render.WriteMessageSVG(&b, title, lines...)
 		return b.Bytes(), Meta{Status: "error", RenderedAt: time.Now().Unix(), Message: lines[0]}, ttl, err
-	}
-
-	info, err := s.github.Lookup(ctx, j.Owner, j.Name)
-	switch {
-	case errors.Is(err, ErrNotFound):
-		return fail(errorTTL, err, "repository not found, or it is private",
-			"strata can only draw public GitHub repositories here")
-	case err != nil:
-		return fail(errorTTL, err, "could not reach GitHub, trying again later")
-	case info.SizeKB > s.cfg.MaxRepoMB*1024:
-		return fail(tooLargeTTL, fmt.Errorf("%d MB is over the limit", info.SizeKB/1024),
-			fmt.Sprintf("this repository is too large to draw here (%d MB, limit %d MB)", info.SizeKB/1024, s.cfg.MaxRepoMB),
-			"run strata locally or use the GitHub Action instead")
 	}
 
 	tmp, err := os.MkdirTemp("", "strata-server-")
@@ -258,7 +318,7 @@ func (s *Server) render(ctx context.Context, j Job) ([]byte, Meta, time.Duration
 	layout := render.NewLayout(tl)
 	layout.Labels = j.Labels
 	opts := render.DefaultSVGOptions
-	opts.Repo = info.Name
+	opts.Repo = cmp.Or(j.Display, j.Name)
 	var b bytes.Buffer
 	if err := render.WriteSVG(&b, tl, layout, opts); err != nil {
 		return fail(errorTTL, err, "could not draw this repository")
