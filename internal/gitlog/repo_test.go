@@ -78,3 +78,18 @@ func TestShallow(t *testing.T) {
 		t.Error("depth-1 clone not reported as shallow")
 	}
 }
+
+func TestCountCommits(t *testing.T) {
+	r := testutil.NewRepo(t)
+	for i := range 4 {
+		r.Write("a", testutil.Lines(i+1))
+		r.Commit("c", testutil.Day(2020, 1, 1+i))
+	}
+	repo, err := OpenRepo(context.Background(), r.Dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n, err := repo.CountCommits(context.Background()); err != nil || n != 4 {
+		t.Errorf("CountCommits = %d, %v", n, err)
+	}
+}

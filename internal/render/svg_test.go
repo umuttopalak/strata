@@ -132,3 +132,17 @@ func TestFinishedText(t *testing.T) {
 		t.Errorf("three commits: %q", got)
 	}
 }
+
+func TestMessageSVG(t *testing.T) {
+	var b bytes.Buffer
+	if err := WriteMessageSVG(&b, "owner/<repo>", "repository not found", "or it is private"); err != nil {
+		t.Fatal(err)
+	}
+	s := b.String()
+	if err := xml.Unmarshal([]byte(s), new(struct{})); err != nil {
+		t.Fatalf("invalid XML: %v", err)
+	}
+	if !strings.Contains(s, "owner/&lt;repo&gt;") || !strings.Contains(s, "or it is private") {
+		t.Errorf("unexpected content: %s", s)
+	}
+}

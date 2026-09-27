@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 )
 
@@ -110,4 +111,14 @@ func (r *Repo) run(ctx context.Context, stdin string, args ...string) (string, e
 func (r *Repo) Shallow(ctx context.Context) bool {
 	out, err := r.output(ctx, "rev-parse", "--is-shallow-repository")
 	return err == nil && strings.TrimSpace(out) == "true"
+}
+
+// CountCommits counts the mainline (first-parent) commits Walk would visit,
+// without reading any file changes, so it is quick even on long histories.
+func (r *Repo) CountCommits(ctx context.Context) (int, error) {
+	out, err := r.output(ctx, "rev-list", "--count", "--first-parent", "HEAD")
+	if err != nil {
+		return 0, err
+	}
+	return strconv.Atoi(strings.TrimSpace(out))
 }

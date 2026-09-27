@@ -324,3 +324,30 @@ func (a animation) holdVisibility() string {
 	return fmt.Sprintf(`<animate attributeName="visibility" calcMode="discrete" values="hidden;visible" keyTimes="0;%s" dur="%s" repeatCount="indefinite"/>`,
 		a.keyTime(a.keyframes-1), a.dur())
 }
+
+// WriteMessageSVG writes a small image in the same terminal style with a
+// title and a few lines of text, for when a repository cannot be drawn
+// (not found, too large) or is still being drawn.
+func WriteMessageSVG(w io.Writer, title string, lines ...string) error {
+	width := 2*svgPad + DefaultSVGOptions.Cols*cellW
+	top := svgPad + titleBar
+	height := top + (len(lines)+2)*cellH + svgPad
+
+	b := bufio.NewWriter(w)
+	fmt.Fprintf(b, `<svg xmlns="http://www.w3.org/2000/svg" xml:space="preserve" width="%d" height="%d" viewBox="0 0 %d %d" role="img">`+"\n",
+		width, height, width, height)
+	fmt.Fprintf(b, "<title>strata · %s</title>\n", html.EscapeString(title))
+	b.WriteString(`<style>text{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;font-size:` +
+		strconv.Itoa(fontSize) + `px;white-space:pre;fill:#8b949e}.b{font-weight:bold;fill:#e6edf3}</style>` + "\n")
+	fmt.Fprintf(b, `<rect x="0.5" y="0.5" width="%d" height="%d" rx="8" fill="#0d1117" stroke="#30363d"/>`+"\n", width-1, height-1)
+	for i, c := range []string{"#ff5f57", "#febc2e", "#28c840"} {
+		fmt.Fprintf(b, `<circle cx="%d" cy="%d" r="6" fill="%s"/>`+"\n", svgPad+6+i*20, svgPad+6, c)
+	}
+	fmt.Fprintf(b, `<text x="%d" y="%d">%s<tspan class="b">%s</tspan></text>`+"\n",
+		svgPad, baseline(top), html.EscapeString(prompt), html.EscapeString(title))
+	for i, line := range lines {
+		fmt.Fprintf(b, `<text x="%d" y="%d">%s</text>`+"\n", svgPad, baseline(top+(i+2)*cellH), html.EscapeString(line))
+	}
+	b.WriteString("</svg>\n")
+	return b.Flush()
+}

@@ -1,0 +1,26 @@
+# Render Blueprint for strata-server (free plan: 0.1 CPU, 512 MB, sleeps
+# when idle). In Render: New → Blueprint → pick this repository.
+# See deploy/README.md for the Cloudflare side.
+services:
+  - type: web
+    name: strata-server
+    runtime: docker
+    plan: free
+    region: virginia # close to GitHub, so clones are fast
+    dockerfilePath: ./deploy/server/Dockerfile
+    dockerContext: .
+    healthCheckPath: /healthz
+    autoDeployTrigger: checksPass
+    envVars:
+      - key: STRATA_SECRET # copy this value into the Worker's STRATA_SECRET
+        generateValue: true
+      - key: GITHUB_TOKEN # fine-grained token, public repositories, read-only
+        sync: false
+      - key: CF_ACCOUNT_ID
+        sync: false
+      - key: CF_KV_NAMESPACE_ID
+        sync: false
+      - key: CF_API_TOKEN # Workers KV Storage: Edit
+        sync: false
+      - key: STRATA_MAX_REPO_MB
+        value: "300"
