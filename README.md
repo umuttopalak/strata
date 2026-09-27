@@ -119,11 +119,24 @@ action's `svg` output. If you forget `fetch-depth: 0`, strata warns that the clo
 | growth and erosion | lines added and deleted by each commit |
 | snow | a summit above 70% of the height, or above 45% and untouched for a sixth of the history |
 
+Notable moments are announced in the header for a couple of seconds:
+
+| Header | When |
+| --- | --- |
+| `▲ first commit` | the first commit of the replay |
+| `◆ v1.2.0` | a commit carries a tag |
+| `▼ big cleanup · −12k lines` | a commit removes at least 1,000 lines and a fifth of the code |
+| `⇄ restructure · 340 files` | a commit touches 50+ files, adding and removing about as much (moves) |
+| `… quiet for 5 months` | two months or more pass between commits |
+| `★ 10k lines` | the code base first passes 1k, 10k, 100k, 1M lines |
+| `+ Ada joins` | first commit of someone who makes at least 5% of the commits |
+
 - History is read with `git log --first-parent -m --numstat`: the mainline, with each merge counted
   against its first parent. Summed this way the line counts match the final tree exactly, including
   conflict resolutions. Commits on merged branches show up as their merge commit.
 - Binary files are ignored. Renames count as a deletion plus an addition.
-- Long histories are grouped so a replay has at most 300 frames.
+- Long histories are grouped so a replay has at most 300 frames. A folder that only existed between
+  two frames, or (in long histories) shows up in under 1% of them, gets no mountain.
 - The whole history is scanned before playback, because the height scale depends on it. On very large
   repositories this takes a few seconds; a counter shows progress.
 

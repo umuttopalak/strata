@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/umuttopalak/strata/internal/gitlog"
+	"github.com/umuttopalak/strata/internal/render"
 	"github.com/umuttopalak/strata/internal/timeline"
 )
 
@@ -79,6 +80,12 @@ func dumpFrames(out io.Writer, tl *timeline.Timeline) error {
 		fmt.Fprintf(w, "%6d  %s  %s\n", f.Commit, date, topColumns(f, tl.Columns, 5))
 	}
 	fmt.Fprintf(w, "\n%d commits in %d frames, %d columns\n", tl.Commits, len(tl.Frames), len(tl.Columns))
+	if len(tl.Events) > 0 {
+		fmt.Fprintf(w, "\n%d events:\n", len(tl.Events))
+	}
+	for _, e := range tl.Events {
+		fmt.Fprintf(w, "  frame %4d  commit %6d  %s\n", e.Frame, e.Commit, render.EventText(e))
+	}
 	return nil
 }
 

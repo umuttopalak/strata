@@ -39,6 +39,7 @@ type Caption struct {
 	Time    time.Time // author date
 	Added   int
 	Deleted int
+	Files   int // files changed
 }
 
 // Frame is the repository's state after a number of commits.
@@ -74,4 +75,5 @@ type Timeline struct {
 	Commits int      // commits in the replay
 	Peak    []int64  // largest total each column ever reached
 	Depth   int      // folder depth the columns were grouped at
+	Events  []Event  // notable moments, in commit order
 }

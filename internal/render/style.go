@@ -5,7 +5,6 @@ import (
 	"strings"
 
 	"charm.land/lipgloss/v2"
-	"github.com/charmbracelet/x/ansi"
 )
 
 var (
@@ -16,7 +15,13 @@ var (
 	repoStyle   = lipgloss.NewStyle().Bold(true)
 	addedStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("2"))
 	deletedSty  = lipgloss.NewStyle().Foreground(lipgloss.Color("1"))
+	eventStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("3")).Bold(true)
 )
+
+// with adapts a style to the one-string form headerLine takes.
+func with(st lipgloss.Style) func(string) string {
+	return func(s string) string { return st.Render(s) }
+}
 
 func cellStyle(c Cell) (lipgloss.Style, bool) {
 	switch c {
@@ -32,9 +37,7 @@ func cellStyle(c Cell) (lipgloss.Style, bool) {
 // Colors are written in full; send the output through a color profile
 // writer to downsample them, or drop them for NO_COLOR and pipes.
 func (p Picture) Styled() []string {
-	name, gap, date := p.header()
-	out := []string{dimStyle.Render(ansi.Truncate(prompt, p.Width, "")) + repoStyle.Render(name) +
-		strings.Repeat(" ", gap) + dimStyle.Render(date)}
+	out := []string{p.headerLine(with(dimStyle), with(repoStyle), with(eventStyle), with(dimStyle))}
 
 	var b strings.Builder
 	for _, row := range p.Cells {

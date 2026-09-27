@@ -47,6 +47,7 @@ type Picture struct {
 	Caption  string   // date · author · +added -deleted · subject
 	Progress string   // commit n/total
 	Status   string   // shown before Progress, e.g. "paused" or "2×"
+	Event    string   // notable moment shown in the header, "" if none
 	Labels   *string  // folder names under the ground line, nil when off
 	Added    int
 	Deleted  int
@@ -109,6 +110,9 @@ func DrawAt(tl *timeline.Timeline, l Layout, pos float64, repo string, width, he
 		p.Caption = fmt.Sprintf("%s · %s · +%d -%d · %s",
 			c.Time.Format("2006-01-02"), c.Author, c.Added, c.Deleted, c.Subject)
 		p.Added, p.Deleted = c.Added, c.Deleted
+	}
+	if e, ok := activeEvent(tl, i); ok {
+		p.Event = EventText(e)
 	}
 	if l.Labels {
 		line := labelLine(l, values, width)
@@ -242,8 +246,8 @@ func captionFor(tl *timeline.Timeline, i int) *timeline.Caption {
 
 // Lines returns the picture as plain text, one string per screen row.
 func (p Picture) Lines() []string {
-	name, gap, date := p.header()
-	out := []string{ansi.Truncate(prompt+name, p.Width, "") + strings.Repeat(" ", gap) + date}
+	plain := func(s string) string { return s }
+	out := []string{p.headerLine(plain, plain, plain, plain)}
 	for _, row := range p.Cells {
 		var b strings.Builder
 		for _, c := range row {
@@ -260,17 +264,51 @@ func (p Picture) Lines() []string {
 
 const prompt = "$ strata "
 
-// header lays out "$ strata <repo>" on the left and the date on the right:
-// it returns the (possibly shortened) repo name, the gap and the date.
-func (p Picture) header() (name string, gap int, date string) {
-	date = p.Date
-	if len(prompt)+1+len(date) > p.Width {
-		date = ""
+// headerLayout places the header's pieces: "$ strata <repo>" on the left,
+// the date on the right and, when there is one, an event in the middle.
+type headerLayout struct {
+	name    string // repo name, possibly shortened
+	event   string // possibly shortened, "" if none fits
+	eventAt int    // column where the event starts
+	date    string
+}
+
+func (p Picture) header() headerLayout {
+	h := headerLayout{date: p.Date}
+	if len(prompt)+1+len(h.date) > p.Width {
+		h.date = ""
 	}
-	room := max(p.Width-len(prompt)-len(date)-1, 0)
-	name = ansi.Truncate(p.Repo, room, "…")
-	gap = max(p.Width-len(prompt)-ansi.StringWidth(name)-len(date), 0)
-	return name, gap, date
+	room := max(p.Width-len(prompt)-len(h.date)-1, 0)
+	h.name = ansi.Truncate(p.Repo, room, "…")
+	left := len(prompt) + ansi.StringWidth(h.name)
+	right := p.Width - len(h.date) // first column of the date
+	h.eventAt = left
+	// Two blank cells on each side keep the event apart from its neighbours.
+	if space := right - left - 4; p.Event != "" && space >= minLabel {
+		h.event = ansi.Truncate(p.Event, space, "…")
+		w := ansi.StringWidth(h.event)
+		h.eventAt = min(max((p.Width-w)/2, left+2), right-2-w)
+	}
+	return h
+}
+
+// headerLine joins the pieces, styling each with the given functions.
+func (p Picture) headerLine(promptStyle, nameStyle, eventStyle, dateStyle func(string) string) string {
+	h := p.header()
+	left := len(prompt) + ansi.StringWidth(h.name)
+	if left > p.Width {
+		return promptStyle(ansi.Truncate(prompt, p.Width, ""))
+	}
+	w := ansi.StringWidth(h.event)
+	var b strings.Builder
+	b.WriteString(promptStyle(prompt) + nameStyle(h.name))
+	b.WriteString(strings.Repeat(" ", h.eventAt-left))
+	if h.event != "" {
+		b.WriteString(eventStyle(h.event))
+	}
+	b.WriteString(strings.Repeat(" ", max(p.Width-len(h.date)-h.eventAt-w, 0)))
+	b.WriteString(dateStyle(h.date))
+	return b.String()
 }
 
 // right is the text pinned to the right edge of the caption line.

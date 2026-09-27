@@ -80,7 +80,7 @@ func WriteSVG(w io.Writer, tl *timeline.Timeline, l Layout, o SVGOptions) error 
 	fmt.Fprintf(b, "<title>strata · %s</title>\n", html.EscapeString(o.Repo))
 	b.WriteString(`<style>
 text{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;font-size:` + strconv.Itoa(fontSize) + `px;white-space:pre;fill:#e6edf3}
-.d{fill:#8b949e}.b{font-weight:bold}.g{fill:#3fb950}.r{fill:#f85149}
+.d{fill:#8b949e}.b{font-weight:bold}.e{fill:#d29922;font-weight:bold}.g{fill:#3fb950}.r{fill:#f85149}
 .k{fill:#8a8a8a}.s{fill:#f5f5f5}
 </style>
 `)
@@ -92,7 +92,7 @@ text{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",mo
 	}
 
 	// Header: the prompt and repository are fixed; the date changes.
-	name, _, _ := pics[0].header()
+	name := pics[0].header().name
 	fmt.Fprintf(b, `<text x="%d" y="%d"><tspan class="d">%s</tspan><tspan class="b">%s</tspan></text>`+"\n",
 		svgPad, baseline(top), html.EscapeString(prompt), html.EscapeString(name))
 
@@ -113,6 +113,10 @@ text{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",mo
 		fmt.Fprintf(b, `<g visibility="%s">%s`, a.baseVisibility(k), a.visibility(k))
 		fmt.Fprintf(b, `<text x="%d" y="%d" text-anchor="end" class="d">%s</text>`,
 			right, baseline(top), html.EscapeString(p.Date))
+		if h := p.header(); h.event != "" {
+			fmt.Fprintf(b, `<text x="%d" y="%d" class="e">%s</text>`,
+				svgPad+h.eventAt*cellW, baseline(top), html.EscapeString(h.event))
+		}
 		if p.Labels != nil {
 			fmt.Fprintf(b, `<text x="%d" y="%d" class="d">%s</text>`,
 				svgPad, baseline(areaBottom+cellH), html.EscapeString(*p.Labels))

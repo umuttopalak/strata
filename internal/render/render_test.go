@@ -123,6 +123,29 @@ func TestNewLayoutFewFolders(t *testing.T) {
 	}
 }
 
+func TestNewLayoutSkipsFlicker(t *testing.T) {
+	// 120 frames: "blip" shows in one, "hidden" in none (it lived only
+	// between frames, so only Peak knows it), "short" in three.
+	frames := make([][]int64, 120)
+	for i := range frames {
+		frames[i] = []int64{int64(i + 1), 0, 0, 0}
+	}
+	frames[50][1] = 500
+	for i := 60; i < 63; i++ {
+		frames[i][3] = 40
+	}
+	tl := timelineOf([]string{"main", "blip", "hidden", "short"}, frames...)
+	tl.Peak[2] = 900
+
+	var names []string
+	for _, s := range NewLayout(tl).Slots {
+		names = append(names, s.Name)
+	}
+	if want := []string{"main", "short"}; !slices.Equal(names, want) {
+		t.Errorf("slots = %v, want %v", names, want)
+	}
+}
+
 func TestHeights(t *testing.T) {
 	const width, rows = 90, 20.0
 	h, owner := Heights([]int64{1000, 1000, 1000}, 1000, width, rows)

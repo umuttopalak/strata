@@ -235,3 +235,30 @@ func TestWalkStops(t *testing.T) {
 		}
 	})
 }
+
+func TestWalkReadsTags(t *testing.T) {
+	r := testutil.NewRepo(t)
+	r.Write("a", testutil.Lines(1))
+	r.Commit("one", testutil.Day(2020, 1, 1))
+	r.Git("tag", "v0.1")
+	r.Write("a", testutil.Lines(2))
+	r.Commit("two", testutil.Day(2020, 1, 2))
+	r.Git("tag", "-a", "v0.2", "-m", "annotated")
+	r.Git("tag", "also-two")
+	r.Write("a", testutil.Lines(3))
+	r.Commit("three", testutil.Day(2020, 1, 3))
+
+	repo, err := OpenRepo(context.Background(), r.Dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string][]string{}
+	for _, c := range walkAll(t, repo, LogOptions{}) {
+		slices.Sort(c.Tags)
+		got[c.Subject] = c.Tags
+	}
+	if !slices.Equal(got["one"], []string{"v0.1"}) ||
+		!slices.Equal(got["two"], []string{"also-two", "v0.2"}) || len(got["three"]) != 0 {
+		t.Errorf("tags = %v", got)
+	}
+}

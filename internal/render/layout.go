@@ -13,6 +13,10 @@ import (
 // merged into one.
 const MaxPeaks = 12
 
+// blipFrames is the history length (in frames) from which folders seen in
+// under 1% of the frames are dropped as flicker.
+const blipFrames = 100
+
 // OtherName names the merged mountain.
 const OtherName = "other"
 
@@ -36,16 +40,35 @@ type Layout struct {
 // largest in the middle and the others alternating right and left. The
 // replay thus grows into a range that rises towards its centre, while
 // folders that were deleted along the way rise and erode near the edges.
+//
+// Only what the frames show counts: a folder that lived only between two
+// frames of a grouped history gets no slot, and in long histories neither
+// does one that would flash up for under 1% of the frames.
 func NewLayout(tl *timeline.Timeline) Layout {
 	final := tl.Frames[len(tl.Frames)-1]
+	peak := make([]int64, len(tl.Columns))
+	alive := make([]int, len(tl.Columns))
+	for _, f := range tl.Frames {
+		for col, v := range f.Totals {
+			peak[col] = max(peak[col], v)
+			if v > 0 {
+				alive[col]++
+			}
+		}
+	}
+	minAlive := 1
+	if len(tl.Frames) >= blipFrames {
+		minAlive = max(len(tl.Frames)/100, 2)
+	}
+
 	var ranked []int
-	for col, peak := range tl.Peak {
-		if peak > 0 {
+	for col := range tl.Columns {
+		if alive[col] >= minAlive {
 			ranked = append(ranked, col)
 		}
 	}
 	slices.SortStableFunc(ranked, func(a, b int) int {
-		return cmp.Or(cmp.Compare(final.Total(b), final.Total(a)), cmp.Compare(tl.Peak[b], tl.Peak[a]))
+		return cmp.Or(cmp.Compare(final.Total(b), final.Total(a)), cmp.Compare(peak[b], peak[a]))
 	})
 
 	var slots []Slot

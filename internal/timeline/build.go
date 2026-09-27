@@ -3,6 +3,7 @@ package timeline
 import (
 	"context"
 	"strings"
+	"time"
 
 	"github.com/umuttopalak/strata/internal/gitlog"
 )
@@ -26,6 +27,8 @@ type Options struct {
 type record struct {
 	deltas  []delta
 	caption Caption
+	at      time.Time // committer date, for quiet periods
+	tags    []string
 }
 
 type delta struct {
@@ -61,8 +64,9 @@ func Build(ctx context.Context, src gitlog.Source, log gitlog.LogOptions, opts O
 
 	var records []record
 	err = src.Walk(ctx, log, func(gc gitlog.Commit) error {
-		cm := record{caption: Caption{
+		cm := record{at: gc.Time, tags: gc.Tags, caption: Caption{
 			Hash: gc.Hash, Author: gc.Author, Subject: gc.Subject, Time: gc.AuthorTime,
+			Files: len(gc.Files),
 		}}
 		for _, f := range gc.Files {
 			cm.caption.Added += f.Added
@@ -89,7 +93,17 @@ func Build(ctx context.Context, src gitlog.Source, log gitlog.LogOptions, opts O
 	}
 	tl := replay(names, remap, seed, records, opts.MaxFrames)
 	tl.Depth = level
+	var seedLines int64
+	for _, d := range seed {
+		seedLines += d.n
+	}
+	tl.Events = detectEvents(records, seedLines, len(seed) > 0, framesPer(len(records), opts.MaxFrames))
 	return tl, nil
+}
+
+// framesPer is how many commits each frame advances.
+func framesPer(commits, maxFrames int) int {
+	return max((commits+maxFrames-1)/maxFrames, 1)
 }
 
 // addDelta merges a file's change into its column's entry; a commit
@@ -109,7 +123,7 @@ func addDelta(ds []delta, col int, n int64) []delta {
 // Deltas refer to collected columns; remap turns them into output columns.
 func replay(names []string, remap []int, seed []delta, records []record, maxFrames int) *Timeline {
 	n := len(records)
-	per := (n + maxFrames - 1) / maxFrames
+	per := framesPer(n, maxFrames)
 
 	totals := make([]int64, len(names))
 	touched := make([]int, len(names))

@@ -23,6 +23,7 @@ type Commit struct {
 	AuthorTime time.Time // author date, shown to the user
 	Author     string
 	Subject    string
+	Tags       []string // tags pointing at this commit
 	Files      []FileChange
 }
 
@@ -32,7 +33,7 @@ const (
 )
 
 // logFormat must stay in sync with parseHeader.
-const logFormat = "--format=%x1e%H%x1f%ct%x1f%at%x1f%an%x1f%s"
+const logFormat = "--format=%x1e%H%x1f%ct%x1f%at%x1f%an%x1f%D%x1f%s"
 
 // Parse reads `git log --numstat` output produced with logFormat and calls
 // fn for each commit, in input order. It stops at the first error from fn.
@@ -82,8 +83,8 @@ func Parse(r io.Reader, fn func(Commit) error) error {
 }
 
 func parseHeader(s string) (Commit, error) {
-	f := strings.SplitN(s, fieldSep, 5)
-	if len(f) != 5 {
+	f := strings.SplitN(s, fieldSep, 6)
+	if len(f) != 6 {
 		return Commit{}, fmt.Errorf("malformed commit header %q", s)
 	}
 	ct, err := strconv.ParseInt(f[1], 10, 64)
@@ -99,8 +100,21 @@ func parseHeader(s string) (Commit, error) {
 		Time:       time.Unix(ct, 0),
 		AuthorTime: time.Unix(at, 0),
 		Author:     f[3],
-		Subject:    f[4],
+		Tags:       tags(f[4]),
+		Subject:    f[5],
 	}, nil
+}
+
+// tags picks the tag names out of a %D ref list such as
+// "HEAD -> main, tag: v1.2.0, origin/main".
+func tags(refs string) []string {
+	var out []string
+	for _, r := range strings.Split(refs, ", ") {
+		if name, ok := strings.CutPrefix(r, "tag: "); ok {
+			out = append(out, name)
+		}
+	}
+	return out
 }
 
 // parseNumstat parses "added<TAB>deleted<TAB>path". Binary files ("-\t-")
