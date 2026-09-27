@@ -29,6 +29,9 @@ inputs:
   speed:
     description: Playback speed multiplier.
     default: "1"
+  labels:
+    description: Write folder names under the mountains ("true" or "false").
+    default: "false"
 
 outputs:
   svg:
@@ -60,10 +63,12 @@ runs:
         STRATA_DEPTH: ${{ inputs.depth }}
         STRATA_SINCE: ${{ inputs.since }}
         STRATA_SPEED: ${{ inputs.speed }}
+        STRATA_LABELS: ${{ inputs.labels }}
       run: |
         args=(--svg "$STRATA_OUTPUT" --depth "$STRATA_DEPTH" --speed "$STRATA_SPEED")
         [ -n "$STRATA_SIZE" ] && args+=(--size "$STRATA_SIZE")
         [ -n "$STRATA_SINCE" ] && args+=(--since "$STRATA_SINCE")
+        [ "$STRATA_LABELS" = "true" ] && args+=(--labels)
         mkdir -p "$(dirname "$STRATA_OUTPUT")"
         "$RUNNER_TEMP/strata" "${args[@]}" "$STRATA_PATH"
         echo "svg=$STRATA_OUTPUT" >> "$GITHUB_OUTPUT"

@@ -1,8 +1,10 @@
 package render
 
 import (
+	"cmp"
 	"fmt"
 	"math"
+	"slices"
 	"strings"
 
 	"github.com/charmbracelet/x/ansi"
@@ -45,6 +47,7 @@ type Picture struct {
 	Caption  string   // date · author · +added -deleted · subject
 	Progress string   // commit n/total
 	Status   string   // shown before Progress, e.g. "paused" or "2×"
+	Labels   *string  // folder names under the ground line, nil when off
 	Added    int
 	Deleted  int
 }
@@ -61,11 +64,15 @@ func Draw(tl *timeline.Timeline, l Layout, i int, repo string, width, height int
 func DrawAt(tl *timeline.Timeline, l Layout, pos float64, repo string, width, height int) Picture {
 	width = max(width, 1)
 	rows := max(height-chromeRows, 1)
+	if l.Labels {
+		rows = max(rows-1, 1)
+	}
 	pos = math.Min(math.Max(pos, 0), float64(len(tl.Frames)-1))
 	i := int(math.Ceil(pos))
 	f := tl.Frames[i]
 
-	h, owner := Heights(l.Values(f), l.Max, width, float64(rows))
+	values := l.Values(f)
+	h, owner := Heights(values, l.Max, width, float64(rows))
 	if prev := int(math.Floor(pos)); prev != i {
 		from, _ := Heights(l.Values(tl.Frames[prev]), l.Max, width, float64(rows))
 		t := smoothstep(pos - float64(prev))
@@ -103,7 +110,96 @@ func DrawAt(tl *timeline.Timeline, l Layout, pos float64, repo string, width, he
 			c.Time.Format("2006-01-02"), c.Author, c.Added, c.Deleted, c.Subject)
 		p.Added, p.Deleted = c.Added, c.Deleted
 	}
+	if l.Labels {
+		line := labelLine(l, values, width)
+		p.Labels = &line
+	}
 	return p
+}
+
+// labelLine writes each standing mountain's folder name under its summit.
+// Larger folders are placed first and keep their full name when there is
+// room; a name may slide up to half a slot off centre to find space, and is
+// shortened (down to minLabel cells) before being left out.
+func labelLine(l Layout, values []int64, width int) string {
+	line := []rune(strings.Repeat(" ", width))
+	n := len(l.Slots)
+	if n == 0 {
+		return string(line)
+	}
+	centres := slotCentres(n, width)
+	slide := int(slotGap(n, width) / 2)
+	used := make([]bool, width)
+
+	order := make([]int, 0, n)
+	for i, v := range values {
+		if v > 0 {
+			order = append(order, i)
+		}
+	}
+	slices.SortStableFunc(order, func(a, b int) int { return cmp.Compare(values[b], values[a]) })
+
+	for _, i := range order {
+		full := []rune(l.Slots[i].Name)
+		for size := len(full); size >= min(minLabel, len(full)); size-- {
+			name := []rune(shorten(l.Slots[i].Name, size))
+			if at, ok := freeSpan(used, len(name), int(math.Round(centres[i]-float64(len(name))/2)), slide); ok {
+				copy(line[at:], name)
+				// Reserve one blank cell on each side so names never touch.
+				for x := max(at-1, 0); x < min(at+len(name)+1, width); x++ {
+					used[x] = true
+				}
+				break
+			}
+		}
+	}
+	return string(line)
+}
+
+// minLabel is the shortest a label is cut to before it is dropped.
+const minLabel = 3
+
+// freeSpan finds a start for n cells near want (within slide) where none is
+// used and the text stays on screen, preferring positions closest to want.
+func freeSpan(used []bool, n, want, slide int) (int, bool) {
+	fits := func(at int) bool {
+		if at < 0 || at+n > len(used) {
+			return false
+		}
+		return !slices.Contains(used[at:at+n], true)
+	}
+	for d := 0; d <= slide; d++ {
+		if fits(want - d) {
+			return want - d, true
+		}
+		if fits(want + d) {
+			return want + d, true
+		}
+	}
+	return 0, false
+}
+
+// shorten fits a folder path into n cells. The last component says the
+// most, so "vendor/github.com/lib" becomes "…/lib" before being cut.
+func shorten(path string, n int) string {
+	r := []rune(path)
+	if len(r) <= n {
+		return path
+	}
+	if i := strings.LastIndexByte(path, '/'); i >= 0 {
+		tail := []rune("…/" + path[i+1:])
+		if len(tail) <= n {
+			return string(tail)
+		}
+		r = []rune(path[i+1:])
+		if len(r) <= n {
+			return string(r)
+		}
+	}
+	if n == 1 {
+		return "…"
+	}
+	return string(r[:n-1]) + "…"
 }
 
 // smoothstep eases t in 0..1 so motion starts and stops gently.
@@ -155,7 +251,11 @@ func (p Picture) Lines() []string {
 		}
 		out = append(out, b.String())
 	}
-	return append(out, strings.Repeat("▔", p.Width), p.footer(p.captionText()))
+	out = append(out, strings.Repeat("▔", p.Width))
+	if p.Labels != nil {
+		out = append(out, *p.Labels)
+	}
+	return append(out, p.footer(p.captionText()))
 }
 
 const prompt = "$ strata "

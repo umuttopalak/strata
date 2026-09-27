@@ -25,8 +25,9 @@ type Slot struct {
 // Layout fixes where each mountain stands and the height scale for the
 // whole replay, so mountains neither move nor rescale while they grow.
 type Layout struct {
-	Slots []Slot // left to right
-	Max   int64  // largest slot total in any frame
+	Slots  []Slot // left to right
+	Max    int64  // largest slot total in any frame
+	Labels bool   // draw folder names under the ground line
 }
 
 // NewLayout ranks folders by their size at the end of the history (then by

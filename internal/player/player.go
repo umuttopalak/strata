@@ -40,6 +40,7 @@ type Options struct {
 	Repo     string        // name shown in the header
 	Interval time.Duration // one frame at speed 1; 0 means DefaultInterval
 	Speed    float64       // starting speed; 0 means 1
+	Labels   bool          // folder names under the mountains
 }
 
 // fallbackSize is used when the output is not a terminal.
@@ -52,6 +53,7 @@ const fallbackWidth, fallbackHeight = 100, 30
 // screen, restores the terminal and returns context.Canceled.
 func Play(ctx context.Context, out *os.File, tl *timeline.Timeline, opts Options) error {
 	layout := render.NewLayout(tl)
+	layout.Labels = opts.Labels
 	w := colorprofile.NewWriter(out, os.Environ())
 	fd := int(out.Fd())
 

@@ -356,6 +356,54 @@ func TestStatusBeforeProgress(t *testing.T) {
 	}
 }
 
+func TestLabelLine(t *testing.T) {
+	l := Layout{Slots: []Slot{
+		{Name: "docs"}, {Name: "a-rather-long-folder"}, {Name: "src"}, {Name: "empty"}, {Name: "tools"},
+	}}
+	values := []int64{50, 20, 900, 0, 10}
+
+	line := labelLine(l, values, 40)
+	if w := ansi.StringWidth(line); w != 40 {
+		t.Fatalf("width %d: %q", w, line)
+	}
+	if !strings.Contains(line, "src") || !strings.Contains(line, "docs") {
+		t.Errorf("the largest folders keep their full names: %q", line)
+	}
+	if strings.Contains(line, "empty") {
+		t.Errorf("a folder with no lines yet gets no label: %q", line)
+	}
+	if strings.Contains(line, "a-rather-long-folder") {
+		t.Errorf("a long name in a narrow slot should be shortened: %q", line)
+	}
+	// All four standing folders get a label, each separated by a blank.
+	if fields := strings.Fields(line); len(fields) != 4 {
+		t.Errorf("want 4 labels, got %d: %q", len(fields), line)
+	}
+
+	// A lone folder may use far more than its slot.
+	solo := labelLine(Layout{Slots: []Slot{{Name: "one"}, {Name: "characters.ini"}}}, []int64{0, 5}, 30)
+	if !strings.Contains(solo, "characters.ini") {
+		t.Errorf("solo = %q", solo)
+	}
+}
+
+func TestDrawWithLabels(t *testing.T) {
+	tl := timelineOf([]string{"src", "docs"}, []int64{0, 0}, []int64{400, 30})
+	l := NewLayout(tl)
+	l.Labels = true
+	p := Draw(tl, l, 1, "r", 60, 20)
+	lines := p.Lines()
+	if len(lines) != 19 || len(p.Cells) != 15 {
+		t.Fatalf("%d lines, %d mountain rows; want 19 and one row fewer for labels", len(lines), len(p.Cells))
+	}
+	if labels := lines[len(lines)-2]; !strings.Contains(labels, "src") || !strings.Contains(labels, "docs") {
+		t.Errorf("label row = %q", labels)
+	}
+	if styled := p.Styled(); ansi.Strip(styled[len(styled)-2]) != lines[len(lines)-2] {
+		t.Error("styled label row differs from plain")
+	}
+}
+
 // Golden files pin down the look. After an intended change, inspect the
 // diff and run: go test ./internal/render -update
 func TestGolden(t *testing.T) {
@@ -373,11 +421,18 @@ func TestGolden(t *testing.T) {
 	for _, tt := range []struct {
 		frame         int
 		width, height int
+		labels        bool
 	}{
-		{0, 40, 8}, {1, 60, 14}, {2, 60, 14}, {3, 60, 14}, {3, 100, 24},
+		{0, 40, 8, false}, {1, 60, 14, false}, {2, 60, 14, false}, {3, 60, 14, false}, {3, 100, 24, false},
+		{3, 100, 24, true},
 	} {
 		name := fmt.Sprintf("frame%d_%dx%d", tt.frame, tt.width, tt.height)
+		if tt.labels {
+			name += "_labels"
+		}
 		t.Run(name, func(t *testing.T) {
+			l := l
+			l.Labels = tt.labels
 			got := strings.Join(Draw(tl, l, tt.frame, "demo", tt.width, tt.height).Lines(), "\n") + "\n"
 			path := filepath.Join("testdata", "golden", name+".txt")
 			if *update {

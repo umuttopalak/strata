@@ -21,27 +21,29 @@ var Version = "dev"
 
 // Config is the validated set of options for one run.
 type Config struct {
-	Path  string
-	Speed float64
-	Depth int
-	Since time.Time // zero means the whole history
-	Cols  int       // --size, 0 when not given
-	Rows  int
+	Path   string
+	Speed  float64
+	Depth  int
+	Since  time.Time // zero means the whole history
+	Cols   int       // --size, 0 when not given
+	Rows   int
+	Labels bool
 }
 
 type flags struct {
-	speed float64
-	depth int
-	since string
-	size  string
-	svg   string
-	dump  bool
-	dumpF bool
-	frame int
+	speed  float64
+	depth  int
+	since  string
+	size   string
+	svg    string
+	labels bool
+	dump   bool
+	dumpF  bool
+	frame  int
 }
 
 func (f flags) config(path string) (Config, error) {
-	cfg := Config{Path: path, Speed: f.speed, Depth: f.depth}
+	cfg := Config{Path: path, Speed: f.speed, Depth: f.depth, Labels: f.labels}
 	if f.speed <= 0 {
 		return cfg, fmt.Errorf("--speed must be greater than 0 (got %g)", f.speed)
 	}
@@ -77,6 +79,7 @@ peaks; a repository with all its files in the root gets a peak per file.`,
   strata ./path/to/repo       # a specific repository
   strata --speed 2 --depth 2  # faster playback, folders two levels deep
   strata --since 2020-01-01   # only history from 2020 onwards
+  strata --labels             # name each mountain under the ground line
   strata --svg strata.svg     # animated SVG for a README (loops, no scripts)
 
 Keys while playing: space pause · ←/→ seek · +/- speed · q quit`,
@@ -123,8 +126,9 @@ Keys while playing: space pause · ←/→ seek · +/- speed · q quit`,
 				return dumpFrames(cmd.OutOrStdout(), tl)
 			}
 			return player.Play(cmd.Context(), os.Stdout, tl, player.Options{
-				Repo:  name,
-				Speed: cfg.Speed,
+				Repo:   name,
+				Speed:  cfg.Speed,
+				Labels: cfg.Labels,
 			})
 		},
 	}
@@ -132,6 +136,7 @@ Keys while playing: space pause · ←/→ seek · +/- speed · q quit`,
 	cmd.Flags().IntVar(&f.depth, "depth", 0, "folder depth that defines a peak (0 = pick automatically)")
 	cmd.Flags().StringVar(&f.since, "since", "", "start from this date (YYYY-MM-DD)")
 	cmd.Flags().StringVar(&f.svg, "svg", "", "write an animated SVG to this file instead of playing")
+	cmd.Flags().BoolVar(&f.labels, "labels", false, "write folder names under the mountains")
 	cmd.Flags().StringVar(&f.size, "size", "", "size in terminal cells for --svg and --frame, e.g. 100x30")
 	cmd.Flags().BoolVar(&f.dump, "dump", false, "print the parsed history instead of playing it")
 	cmd.Flags().BoolVar(&f.dumpF, "dump-frames", false, "print the timeline frames instead of playing them")

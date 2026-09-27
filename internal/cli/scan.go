@@ -47,7 +47,9 @@ func printFrame(out io.Writer, tl *timeline.Timeline, repo string, index int, cf
 	} else if w, h, err := term.GetSize(int(os.Stdout.Fd())); err == nil {
 		width, height = w, h
 	}
-	pic := render.Draw(tl, render.NewLayout(tl), index, repo, width, height)
+	layout := render.NewLayout(tl)
+	layout.Labels = cfg.Labels
+	pic := render.Draw(tl, layout, index, repo, width, height)
 	for _, line := range pic.Styled() {
 		if _, err := lipgloss.Fprintln(out, line); err != nil {
 			return err
@@ -69,7 +71,9 @@ func writeSVG(log io.Writer, path string, tl *timeline.Timeline, repo string, cf
 	if err != nil {
 		return err
 	}
-	if err := render.WriteSVG(f, tl, render.NewLayout(tl), o); err != nil {
+	layout := render.NewLayout(tl)
+	layout.Labels = cfg.Labels
+	if err := render.WriteSVG(f, tl, layout, o); err != nil {
 		f.Close()
 		return err
 	}

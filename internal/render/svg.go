@@ -63,7 +63,11 @@ func WriteSVG(w io.Writer, tl *timeline.Timeline, l Layout, o SVGOptions) error 
 	}
 	a := newAnimation(frames, o)
 
-	rows := o.Height - chromeRows
+	rows := len(pics[0].Cells)
+	captionRow := 1 // rows below the ground line
+	if pics[0].Labels != nil {
+		captionRow = 2
+	}
 	top := svgPad + titleBar           // y of the header row
 	areaTop := top + cellH             // first mountain row
 	areaBottom := areaTop + rows*cellH // ground line
@@ -109,14 +113,18 @@ text{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",mo
 		fmt.Fprintf(b, `<g visibility="%s">%s`, a.baseVisibility(k), a.visibility(k))
 		fmt.Fprintf(b, `<text x="%d" y="%d" text-anchor="end" class="d">%s</text>`,
 			right, baseline(top), html.EscapeString(p.Date))
-		fmt.Fprintf(b, `<text x="%d" y="%d">%s</text>`, svgPad, baseline(areaBottom+cellH), captionSpans(p))
+		if p.Labels != nil {
+			fmt.Fprintf(b, `<text x="%d" y="%d" class="d">%s</text>`,
+				svgPad, baseline(areaBottom+cellH), html.EscapeString(*p.Labels))
+		}
+		fmt.Fprintf(b, `<text x="%d" y="%d">%s</text>`, svgPad, baseline(areaBottom+captionRow*cellH), captionSpans(p))
 		fmt.Fprintf(b, `<text x="%d" y="%d" text-anchor="end" class="d">%s</text>`,
-			right, baseline(areaBottom+cellH), html.EscapeString(p.right()))
+			right, baseline(areaBottom+captionRow*cellH), html.EscapeString(p.right()))
 		b.WriteString("</g>\n")
 	}
 	// The closing line appears while the last frame holds.
 	fmt.Fprintf(b, `<text x="%d" y="%d" class="g">%s%s</text>`+"\n",
-		svgPad, baseline(areaBottom+2*cellH), a.holdVisibility(), html.EscapeString(FinishedText(tl)))
+		svgPad, baseline(areaBottom+(captionRow+1)*cellH), a.holdVisibility(), html.EscapeString(FinishedText(tl)))
 
 	b.WriteString("</svg>\n")
 	return b.Flush()

@@ -30,6 +30,7 @@ strata ./path/to/repo           # replay another repository
 strata --speed 2                # twice as fast
 strata --since 2023-01-01       # start from a date (earlier code is already standing)
 strata --depth 2                # one mountain per second-level folder
+strata --labels                 # name each mountain under the ground line
 strata --svg strata.svg         # write an animated SVG instead of playing
 ```
 
@@ -103,6 +104,7 @@ jobs:
 | `depth` | `0` | folder depth per mountain; `0` picks one |
 | `since` | | only replay history from this date |
 | `speed` | `1` | playback speed |
+| `labels` | `false` | write folder names under the mountains |
 
 Leave `branch` empty to keep the file in the workspace for your own steps; its path is in the
 action's `svg` output. If you forget `fetch-depth: 0`, strata warns that the clone is shallow.

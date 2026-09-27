@@ -42,14 +42,8 @@ func Heights(values []int64, max int64, width int, rows float64) ([]float64, []i
 		return h, owner
 	}
 
-	slot := float64(width) / float64(n)
-	spread := slot*0.55 + 1
-	gap := slot
-	if n%2 == 0 {
-		gap = float64(width) / float64(n+1)
-	}
-	mid := (n - 1) / 2
-	centre := func(i int) float64 { return float64(width)/2 + float64(i-mid)*gap }
+	spread := float64(width)/float64(n)*0.55 + 1
+	centres := slotCentres(n, width)
 	peak := make([]float64, n)
 	for i, v := range values {
 		peak[i] = Scale(v, max) * rows * peakFill
@@ -61,7 +55,7 @@ func Heights(values []int64, max int64, width int, rows float64) ([]float64, []i
 			if p == 0 {
 				continue
 			}
-			d := (float64(x) + 0.5 - centre(i)) / spread
+			d := (float64(x) + 0.5 - centres[i]) / spread
 			c := p * math.Exp(-d*d)
 			sum += c
 			if c > top {
@@ -73,6 +67,26 @@ func Heights(values []int64, max int64, width int, rows float64) ([]float64, []i
 		h[x] = math.Min(math.Max(v, 0), rows)
 	}
 	return h, owner
+}
+
+// slotCentres returns the column each of n slots is centred on: slot
+// (n-1)/2 in the middle, the others at equal gaps (see Heights).
+func slotCentres(n, width int) []float64 {
+	gap := slotGap(n, width)
+	mid := (n - 1) / 2
+	out := make([]float64, n)
+	for i := range out {
+		out[i] = float64(width)/2 + float64(i-mid)*gap
+	}
+	return out
+}
+
+// slotGap is the distance between neighbouring slot centres.
+func slotGap(n, width int) float64 {
+	if n%2 == 0 {
+		return float64(width) / float64(n+1)
+	}
+	return float64(width) / float64(n)
 }
 
 // textureSpread is the hill width the texture's wavelengths are tuned for.

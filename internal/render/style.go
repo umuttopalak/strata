@@ -58,9 +58,11 @@ func (p Picture) Styled() []string {
 		out = append(out, b.String())
 	}
 
-	return append(out,
-		groundStyle.Render(strings.Repeat("▔", p.Width)),
-		p.footer(p.styledCaption()))
+	out = append(out, groundStyle.Render(strings.Repeat("▔", p.Width)))
+	if p.Labels != nil {
+		out = append(out, dimStyle.Render(*p.Labels))
+	}
+	return append(out, p.footer(p.styledCaption()))
 }
 
 func sameStyle(a, b Cell) bool {
