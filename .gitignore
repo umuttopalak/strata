@@ -2,3 +2,7 @@
 /strata.exe
 /dist/
 /dist/
+
+# Generated SVGs; only the README demo is kept.
+*.svg
+!docs/demo.svg
