@@ -104,7 +104,7 @@ jobs:
   svg:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0 # strata needs the full history
       - uses: umuttopalak/strata@main
