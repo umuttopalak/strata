@@ -18,8 +18,12 @@ export function parseRequest(url) {
   return { owner, name, labels, key };
 }
 
-/** How old a stored image may get before a new render is requested. */
-export const STALE_SECONDS = 24 * 60 * 60;
+/**
+ * How old a stored image may get before a new render is requested. A week,
+ * not a day: every render is one of the 1,000 KV writes a free plan allows
+ * per day, so daily redraws would stop new repositories past ~1,000 in use.
+ */
+export const STALE_SECONDS = 7 * 24 * 60 * 60;
 
 export function isStale(metadata, nowSeconds) {
   return !metadata || !metadata.renderedAt || nowSeconds - metadata.renderedAt > STALE_SECONDS;

@@ -22,17 +22,17 @@ alone for years, and which folders came and went.
 For any public GitHub repository:
 
 ```markdown
-![strata](https://strata.umuttopalak-de4.workers.dev/OWNER/REPO.svg)
+[![strata](https://strata.umuttopalak-de4.workers.dev/OWNER/REPO.svg)](https://strata.umuttopalak-de4.workers.dev/#OWNER/REPO)
 ```
 
 Add `?labels` to name each mountain:
 
 ```markdown
-![strata](https://strata.umuttopalak-de4.workers.dev/OWNER/REPO.svg?labels)
+[![strata](https://strata.umuttopalak-de4.workers.dev/OWNER/REPO.svg?labels)](https://strata.umuttopalak-de4.workers.dev/#OWNER/REPO)
 ```
 
 The first request shows a "drawing…" image; the real one is ready a minute or two later (refresh).
-After that it is served from Cloudflare and redrawn once a day. The hosted service draws public
+After that it is served from Cloudflare and redrawn once a week. The hosted service draws public
 repositories up to 300 MB and 15,000 mainline commits; anything else gets an image explaining why.
 For private or larger repositories, use the GitHub Action below.
 
