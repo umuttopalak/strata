@@ -121,3 +121,14 @@ func TestSVGRejectsTinySize(t *testing.T) {
 		t.Error("expected an error for a size with no room for mountains")
 	}
 }
+
+func TestFinishedText(t *testing.T) {
+	one := timelineOf([]string{"a"}, []int64{0}, []int64{1})
+	if got := FinishedText(one); got != "✓ done · 1 commit" {
+		t.Errorf("one commit: %q", got)
+	}
+	three := timelineOf([]string{"a"}, []int64{0}, []int64{1}, []int64{2}, []int64{3})
+	if got := FinishedText(three); got != "✓ done · 3 commits" {
+		t.Errorf("three commits: %q", got)
+	}
+}

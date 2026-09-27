@@ -136,7 +136,10 @@ text{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",mo
 
 // FinishedText is the line shown when a replay ends.
 func FinishedText(tl *timeline.Timeline) string {
-	return fmt.Sprintf("✓ belgesel bitti · %d commit", tl.Commits)
+	if tl.Commits == 1 {
+		return "✓ done · 1 commit"
+	}
+	return fmt.Sprintf("✓ done · %d commits", tl.Commits)
 }
 
 func baseline(rowTop int) int { return rowTop + cellH*3/4 }
