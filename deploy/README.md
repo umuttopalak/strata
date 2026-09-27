@@ -90,7 +90,7 @@ What the Worker does with a request:
 
 | Situation | Answer | Cached for |
 | --- | --- | --- |
-| SVG in KV, drawn in the last 24 h | the SVG | 1 hour |
+| SVG in KV, drawn in the last 7 days | the SVG | 1 hour |
 | SVG in KV, older | the SVG, and asks the server for a new one | 1 hour |
 | not in KV, repository missing, private or too large (checked on GitHub) | an image saying so; the server is not woken | 10 minutes |
 | not in KV, repository fine | a "drawing…" image, and asks the server | not cached |
@@ -101,6 +101,10 @@ try-it box uses it to keep asking until a placeholder turns into the real image.
 Refusals never touch KV, so made-up names cannot use up its 1,000 free writes a day. The Cache API
 does not work on `workers.dev` addresses, so the Worker keeps no cache of its own; repeat requests
 are merged by the server, which also remembers what it drew in the last 10 minutes.
+
+The site's hero and gallery images are static copies in `web/public/gallery`, so a busy day on
+the site does not use up the free plan's 100,000 Worker requests. Refresh them with
+`npm run gallery` (the list is in `web/public/gallery.js`) and redeploy.
 
 Try it locally against a local server (`STRATA_STORE_DIR` mode, see below):
 

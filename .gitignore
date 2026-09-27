@@ -6,3 +6,4 @@
 # Generated SVGs; only the README demo is kept.
 *.svg
 !docs/demo.svg
+!web/public/gallery/**/*.svg

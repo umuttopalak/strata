@@ -1,18 +1,5 @@
+import { GALLERY, galleryImage } from "./gallery.js";
 import { parseRepoInput } from "./repo.js";
-
-// Repositories in the gallery: well known, varied, and within the hosted
-// service's limits (300 MB, 15,000 mainline commits).
-const GALLERY = [
-  "BurntSushi/ripgrep",
-  "charmbracelet/bubbletea",
-  "pallets/flask",
-  "expressjs/express",
-  "jqlang/jq",
-  "ohmyzsh/ohmyzsh",
-  "vitejs/vite",
-  "tailwindlabs/tailwindcss",
-  "charmbracelet/lipgloss",
-];
 
 const $ = (id) => document.getElementById(id);
 const imageURL = (repo, labels) => `${location.origin}/${repo}.svg${labels ? "?labels" : ""}`;
@@ -24,7 +11,7 @@ function renderGallery() {
     a.className = "card";
     a.href = `https://github.com/${repo}`;
     const img = document.createElement("img");
-    img.src = imageURL(repo, false);
+    img.src = galleryImage(repo);
     img.alt = `The history of ${repo} as a mountain range`;
     img.loading = "lazy";
     img.width = 832;
@@ -44,7 +31,9 @@ let polling = null;
 async function draw(repo, labels) {
   clearTimeout(polling);
   const url = imageURL(repo, labels);
-  const markdown = `![strata](${url})`;
+  // The image links back to this repository's page here, so readers of a
+  // README can find strata and try their own.
+  const markdown = `[![strata](${url})](${location.origin}/#${repo})`;
   $("snippet").textContent = markdown;
   $("result").hidden = false;
   $("preview").alt = `The history of ${repo} as a mountain range`;
