@@ -28,10 +28,13 @@ export function isStale(metadata, nowSeconds) {
 /**
  * Response headers for an SVG. maxAge 0 means "do not cache": GitHub's
  * image proxy then asks again, so a placeholder is replaced once the real
- * image exists.
+ * image exists. status ("ok", "error", "refused" or "rendering") lets the
+ * site tell a placeholder from the real thing.
  */
-export function svgHeaders(maxAge) {
+export function svgHeaders(maxAge, status) {
   return {
+    "X-Strata-Status": status,
+    "Access-Control-Expose-Headers": "X-Strata-Status",
     "Content-Type": "image/svg+xml; charset=utf-8",
     "Cache-Control": maxAge > 0 ? `public, max-age=${maxAge}` : "no-cache, no-store, must-revalidate",
     // An SVG is a document; this one never needs scripts or outside resources.

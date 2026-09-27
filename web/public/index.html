@@ -1,1 +1,115 @@
-<!doctype html><meta charset="utf-8"><title>strata</title><p>strata gallery coming soon</p>
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>strata · your Git history as a mountain range</title>
+  <meta name="description" content="Turn any public GitHub repository's history into an animated mountain range for your README. One line of Markdown, nothing to install.">
+  <meta property="og:title" content="strata · your Git history as a mountain range">
+  <meta property="og:description" content="Every mountain is a folder, its height the lines of code. Embed it in your README with one line.">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M1 14 6 5l3 5 2-3 4 7z' fill='%238a8a8a'/%3E%3Cpath d='M6 5 7.2 7.2 6 7 4.8 7.2z' fill='%23fff'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <header class="top">
+    <a class="brand" href="/">▲ strata</a>
+    <nav>
+      <a href="#try">Try it</a>
+      <a href="#gallery">Gallery</a>
+      <a href="#install">Install</a>
+      <a href="https://github.com/umuttopalak/strata">GitHub</a>
+    </nav>
+  </header>
+
+  <main>
+    <section class="hero">
+      <h1>Your Git history,<br>as a mountain range.</h1>
+      <p class="lead">
+        Every mountain is a folder and its height is the code it holds. The range grows commit by
+        commit: added lines raise it, deleted lines erode it, and summits left alone for a long time
+        gather snow. Put it in your README with one line of Markdown.
+      </p>
+      <figure class="window">
+        <img src="/junegunn/fzf.svg" alt="The history of junegunn/fzf drawn as a growing mountain range" width="832" height="540">
+        <figcaption><a href="https://github.com/junegunn/fzf">junegunn/fzf</a>, 3,500 commits</figcaption>
+      </figure>
+    </section>
+
+    <section id="try" class="try">
+      <h2>Try your repository</h2>
+      <form id="try-form" autocomplete="off">
+        <label for="repo" class="visually-hidden">GitHub repository</label>
+        <input id="repo" name="repo" type="text" placeholder="owner/repo or a GitHub URL" spellcheck="false" required>
+        <label class="check"><input id="labels" type="checkbox"> folder names</label>
+        <button type="submit">Draw</button>
+      </form>
+      <p id="try-error" class="error" role="alert" hidden></p>
+
+      <div id="result" hidden>
+        <p id="status" class="status" aria-live="polite"></p>
+        <figure class="window">
+          <img id="preview" alt="">
+        </figure>
+        <p class="snippet-label">Add it to your README:</p>
+        <div class="snippet">
+          <code id="snippet"></code>
+          <button type="button" id="copy">Copy</button>
+        </div>
+      </div>
+
+      <p class="fine">
+        Public GitHub repositories up to 300 MB and 15,000 mainline commits. Images refresh once a day.
+        The first drawing takes a minute or two while the free server wakes up.
+      </p>
+    </section>
+
+    <section class="read">
+      <h2>How to read it</h2>
+      <dl>
+        <div><dt>Mountains</dt><dd>Folders. The largest stands in the middle; strata picks the folder depth that gives at least four.</dd></div>
+        <div><dt>Height</dt><dd>Lines of code, on a log scale fixed to the largest size in the whole history.</dd></div>
+        <div><dt>Snow</dt><dd>Very tall summits, and those nobody has touched for a sixth of the history.</dd></div>
+        <div><dt>Headlines</dt><dd>Tags, big cleanups, restructures, quiet months, line milestones and new core contributors.</dd></div>
+      </dl>
+    </section>
+
+    <section id="gallery" class="gallery">
+      <h2>Gallery</h2>
+      <div id="gallery-grid" class="grid"></div>
+    </section>
+
+    <section id="install" class="install">
+      <h2>Other ways to use it</h2>
+      <div class="ways">
+        <article>
+          <h3>In your terminal</h3>
+          <p>Watch it grow, pause and rewind. Works on any repository, local or remote.</p>
+          <pre><code>go install github.com/umuttopalak/strata/cmd/strata@latest
+strata                         # this repository
+strata github.com/owner/repo   # any public one</code></pre>
+          <p>Or download a binary from the <a href="https://github.com/umuttopalak/strata/releases">releases</a>.</p>
+        </article>
+        <article>
+          <h3>With GitHub Actions</h3>
+          <p>No size limits, private repositories, and a fresh image on every push.</p>
+          <pre><code>- uses: actions/checkout@v7
+  with:
+    fetch-depth: 0
+- uses: umuttopalak/strata@main
+  with:
+    branch: output</code></pre>
+          <p>See the <a href="https://github.com/umuttopalak/strata#keep-it-up-to-date-with-github-actions">README</a> for the full workflow.</p>
+        </article>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <p>
+      strata is open source · <a href="https://github.com/umuttopalak/strata">github.com/umuttopalak/strata</a>
+    </p>
+  </footer>
+
+  <script src="/app.js" type="module"></script>
+</body>
+</html>

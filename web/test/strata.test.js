@@ -38,9 +38,10 @@ test("isStale", () => {
 });
 
 test("svgHeaders", () => {
-  assert.equal(svgHeaders(3600)["Cache-Control"], "public, max-age=3600");
-  assert.match(svgHeaders(0)["Cache-Control"], /no-cache/);
-  assert.match(svgHeaders(0)["Content-Security-Policy"], /default-src 'none'/);
+  assert.equal(svgHeaders(3600, "ok")["Cache-Control"], "public, max-age=3600");
+  assert.equal(svgHeaders(3600, "ok")["X-Strata-Status"], "ok");
+  assert.match(svgHeaders(0, "rendering")["Cache-Control"], /no-cache/);
+  assert.match(svgHeaders(0, "rendering")["Content-Security-Policy"], /default-src 'none'/);
 });
 
 test("messageSVG escapes its text", () => {

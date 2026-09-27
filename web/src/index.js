@@ -32,13 +32,14 @@ export default {
       return new Response("method not allowed", { status: 405, headers: { Allow: "GET, HEAD" } });
     }
     const title = `${job.owner}/${job.name}`;
-    const reply = (svg, maxAge) =>
-      new Response(request.method === "HEAD" ? null : svg, { headers: svgHeaders(maxAge) });
+    const reply = (svg, maxAge, status) =>
+      new Response(request.method === "HEAD" ? null : svg, { headers: svgHeaders(maxAge, status) });
 
     const { value, metadata } = await env.SVGS.getWithMetadata(job.key, { type: "text" });
     if (value !== null) {
       if (isStale(metadata, Date.now() / 1000)) ctx.waitUntil(askServer(env, job));
-      return reply(value, metadata?.status === "ok" ? OK_MAX_AGE : ERROR_MAX_AGE);
+      const ok = metadata?.status === "ok";
+      return reply(value, ok ? OK_MAX_AGE : ERROR_MAX_AGE, ok ? "ok" : "error");
     }
 
     // Nothing stored yet. Refuse what cannot be drawn right away, so made-up
@@ -49,10 +50,10 @@ export default {
       token: env.GITHUB_TOKEN,
       maxRepoMB: Number(env.MAX_REPO_MB) || 300,
     });
-    if (!check.ok) return reply(messageSVG(title, check.lines), ERROR_MAX_AGE);
+    if (!check.ok) return reply(messageSVG(title, check.lines), ERROR_MAX_AGE, "refused");
 
     ctx.waitUntil(askServer(env, job));
-    return reply(messageSVG(title, RENDERING_LINES), 0);
+    return reply(messageSVG(title, RENDERING_LINES), 0, "rendering");
   },
 };
 

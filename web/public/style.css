@@ -1,0 +1,153 @@
+:root {
+  --bg: #0b0e14;
+  --panel: #0d1117;
+  --line: #30363d;
+  --text: #e6edf3;
+  --muted: #8b949e;
+  --rock: #8a8a8a;
+  --accent: #d29922;
+  --ok: #3fb950;
+  --bad: #f85149;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 16px/1.6 var(--sans);
+}
+
+a { color: var(--text); text-underline-offset: 3px; }
+a:hover { color: var(--accent); }
+
+.top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 20px 16px;
+}
+.brand { font: 700 18px var(--mono); text-decoration: none; }
+nav { display: flex; gap: 20px; flex-wrap: wrap; font-size: 15px; }
+nav a { color: var(--muted); text-decoration: none; }
+nav a:hover { color: var(--text); }
+
+main { max-width: 1080px; margin: 0 auto; padding: 0 16px; }
+section { padding: 48px 0; border-top: 1px solid #161b22; }
+section:first-child { border-top: 0; }
+
+h1 { font-size: clamp(34px, 6vw, 58px); line-height: 1.1; letter-spacing: -0.02em; margin: 24px 0 20px; }
+h2 { font-size: 26px; margin: 0 0 20px; }
+h3 { font-size: 18px; margin: 0 0 8px; }
+.lead { max-width: 680px; color: var(--muted); font-size: 18px; margin: 0 0 32px; }
+
+.window { margin: 0; }
+.window img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 10px;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, .45);
+}
+figcaption { color: var(--muted); font-size: 14px; margin-top: 10px; }
+
+/* Try it */
+form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+input[type=text] {
+  flex: 1 1 320px;
+  min-width: 0;
+  padding: 12px 14px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--text);
+  font: 16px var(--mono);
+}
+input[type=text]:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+.check { color: var(--muted); font-size: 15px; display: flex; align-items: center; gap: 6px; cursor: pointer; }
+button {
+  padding: 12px 20px;
+  background: var(--text);
+  color: var(--bg);
+  border: 0;
+  border-radius: 8px;
+  font: 600 15px var(--sans);
+  cursor: pointer;
+}
+button:hover { background: var(--accent); }
+.error { color: var(--bad); margin: 8px 0; }
+.status { color: var(--muted); font: 14px var(--mono); min-height: 1.6em; }
+.status.ok { color: var(--ok); }
+#result .window { margin: 8px 0 20px; }
+
+.snippet-label { color: var(--muted); margin: 0 0 8px; font-size: 15px; }
+.snippet {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 6px 6px 6px 14px;
+}
+.snippet code {
+  flex: 1;
+  min-width: 0;
+  align-self: center;
+  overflow-x: auto;
+  white-space: nowrap;
+  font: 14px var(--mono);
+}
+.snippet button { padding: 8px 14px; font-size: 14px; }
+.fine { color: var(--muted); font-size: 14px; margin-top: 16px; max-width: 720px; }
+
+/* How to read it */
+dl { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 24px; margin: 0; }
+dt { font: 600 15px var(--mono); color: var(--accent); margin-bottom: 4px; }
+dd { margin: 0; color: var(--muted); font-size: 15px; }
+
+/* Gallery */
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(420px, 1fr)); gap: 28px; }
+.grid a.card { display: block; text-decoration: none; }
+.grid img { display: block; width: 100%; height: auto; border-radius: 8px; background: var(--panel); aspect-ratio: 832 / 540; }
+.grid .name { display: block; margin-top: 8px; font: 14px var(--mono); color: var(--muted); }
+.grid a.card:hover .name { color: var(--text); }
+
+/* Install */
+.ways { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 32px; }
+.ways p { color: var(--muted); font-size: 15px; }
+pre {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 14px;
+  overflow-x: auto;
+  font: 13px/1.6 var(--mono);
+}
+
+footer { max-width: 1080px; margin: 0 auto; padding: 32px 16px 48px; color: var(--muted); font-size: 14px; }
+footer a { color: var(--muted); }
+
+.visually-hidden {
+  position: absolute; width: 1px; height: 1px; overflow: hidden;
+  clip: rect(0 0 0 0); white-space: nowrap;
+}
+
+@media (max-width: 520px) {
+  .grid { grid-template-columns: 1fr; }
+  nav { gap: 14px; }
+  section { padding: 36px 0; }
+}
