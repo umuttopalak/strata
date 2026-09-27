@@ -3,6 +3,8 @@
 name = "strata"
 main = "src/index.js"
 compatibility_date = "2026-09-01"
+workers_dev = true   # served at strata.<subdomain>.workers.dev
+preview_urls = false # no per-version preview addresses
 
 # The gallery site. Requests that match a file are served directly;
 # everything else (the SVG routes) runs the Worker.
@@ -13,10 +15,10 @@ not_found_handling = "404-page"
 
 [[kv_namespaces]]
 binding = "SVGS"
-id = "REPLACE_WITH_KV_NAMESPACE_ID" # the same namespace strata-server writes to
+id = "beaee8ea8b7343f986d550dc7730fe9f" # the same namespace strata-server writes to
 
 [vars]
-SERVER_URL = "https://REPLACE_WITH_RENDER_HOST.onrender.com" # no trailing slash
+SERVER_URL = "https://strata-server-5vo0.onrender.com" # no trailing slash
 MAX_REPO_MB = "300"
 
 # Secrets, set once with `npx wrangler secret put NAME`:
