@@ -1,0 +1,6 @@
+# Keep LF line endings on every platform. Golden drawings, git log fixtures
+# and SVGs are compared byte for byte, and Git for Windows would otherwise
+# check them out with CRLF.
+* text=auto eol=lf
+
+*.png binary

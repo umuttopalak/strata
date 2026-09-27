@@ -36,6 +36,17 @@ func (r *Repo) Git(args ...string) string {
 
 func (r *Repo) gitEnv(env []string, args ...string) string {
 	r.t.Helper()
+	out, err := r.run(env, args...)
+	if err != nil {
+		r.t.Fatalf("git %s: %v\n%s", strings.Join(args, " "), err, out)
+	}
+	return out
+}
+
+// run executes git with a fixed identity and no user or system config, so
+// tests behave the same on machines where git cannot guess an identity
+// (CI runners) and on developer machines with their own settings.
+func (r *Repo) run(env []string, args ...string) (string, error) {
 	cmd := exec.Command("git", append([]string{"-C", r.Dir}, args...)...)
 	cmd.Env = append(os.Environ(),
 		"GIT_CONFIG_GLOBAL="+os.DevNull, "GIT_CONFIG_NOSYSTEM=1",
@@ -44,10 +55,7 @@ func (r *Repo) gitEnv(env []string, args ...string) string {
 		"LC_ALL=C")
 	cmd.Env = append(cmd.Env, env...)
 	out, err := cmd.CombinedOutput()
-	if err != nil {
-		r.t.Fatalf("git %s: %v\n%s", strings.Join(args, " "), err, out)
-	}
-	return string(out)
+	return string(out), err
 }
 
 // Write creates or overwrites a file (creating parent directories).
@@ -86,9 +94,13 @@ func (r *Repo) Commit(msg string, at time.Time) string {
 // conflicts or make an "evil merge" that changes extra lines.
 func (r *Repo) Merge(branch, msg string, at time.Time, resolve func()) {
 	r.t.Helper()
-	cmd := exec.Command("git", "-C", r.Dir, "merge", "-q", "--no-ff", "--no-commit", branch)
-	cmd.Env = append(os.Environ(), "GIT_CONFIG_GLOBAL="+os.DevNull, "GIT_CONFIG_NOSYSTEM=1")
-	_ = cmd.Run() // a conflict exits non-zero; Commit fails if it is left unresolved
+	// A conflict makes git exit non-zero but leaves the merge in progress,
+	// which is fine: resolve fixes it. Anything else is a broken fixture.
+	if out, err := r.run(nil, "merge", "-q", "--no-ff", "--no-commit", branch); err != nil {
+		if _, inProgress := r.run(nil, "rev-parse", "-q", "--verify", "MERGE_HEAD"); inProgress != nil {
+			r.t.Fatalf("git merge %s: %v\n%s", branch, err, out)
+		}
+	}
 	if resolve != nil {
 		resolve()
 	}
