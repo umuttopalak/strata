@@ -52,3 +52,29 @@ func TestOpenRepo(t *testing.T) {
 		})
 	}
 }
+
+func TestShallow(t *testing.T) {
+	ctx := context.Background()
+	src := testutil.NewRepo(t)
+	for i := range 3 {
+		src.Write("a.txt", testutil.Lines(i+1))
+		src.Commit("c", testutil.Day(2020, 1, 1+i))
+	}
+	full, err := OpenRepo(ctx, src.Dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if full.Shallow(ctx) {
+		t.Error("full repository reported as shallow")
+	}
+
+	dst := filepath.Join(t.TempDir(), "clone")
+	src.Git("clone", "-q", "--depth", "1", "file://"+src.Dir, dst)
+	clone, err := OpenRepo(ctx, dst)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !clone.Shallow(ctx) {
+		t.Error("depth-1 clone not reported as shallow")
+	}
+}

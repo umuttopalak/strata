@@ -97,6 +97,10 @@ Keys while playing: space pause · ←/→ seek · +/- speed · q quit`,
 			if err != nil {
 				return friendly(err)
 			}
+			if repo.Shallow(cmd.Context()) {
+				fmt.Fprintln(cmd.ErrOrStderr(), "strata: warning: this is a shallow clone, so only part of the history is available\n"+
+					"  hint: run `git fetch --unshallow`, or set `fetch-depth: 0` on actions/checkout")
+			}
 			opts := gitlog.LogOptions{Since: cfg.Since}
 			if _, err := repo.Bounds(cmd.Context(), opts); err != nil {
 				return friendly(err)

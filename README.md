@@ -63,8 +63,9 @@ Then reference it from your README:
 
 ### Keep it up to date with GitHub Actions
 
-This workflow regenerates the SVG on every push to `main` and publishes it on an `output` branch, so
-your main history stays free of generated files:
+strata is also a GitHub Action. This workflow regenerates the SVG on every push to `main` and
+publishes it as the only file of an `output` branch, so your main history stays free of generated
+files:
 
 ```yaml
 # .github/workflows/strata.yml
@@ -84,26 +85,27 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0 # strata needs the full history
-      - uses: actions/setup-go@v5
+      - uses: umuttopalak/strata@main
         with:
-          go-version: stable
-      - run: go install github.com/umuttopalak/strata/cmd/strata@latest
-      - run: strata --svg "$RUNNER_TEMP/strata.svg"
-      - name: Publish to the output branch
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git checkout --orphan output
-          git rm -rfq --cached .
-          cp "$RUNNER_TEMP/strata.svg" strata.svg
-          git add strata.svg
-          git commit -m "Update strata.svg"
-          git push -f origin output
+          branch: output
 ```
 
 ```markdown
 ![strata](https://raw.githubusercontent.com/<you>/<repo>/output/strata.svg)
 ```
+
+| Input | Default | |
+| --- | --- | --- |
+| `output` | `strata.svg` | where to write the SVG |
+| `branch` | | publish the SVG to this branch (replaced on every run) |
+| `path` | `.` | repository to render |
+| `size` | `100x30` | width × height in terminal cells |
+| `depth` | `0` | folder depth per mountain; `0` picks one |
+| `since` | | only replay history from this date |
+| `speed` | `1` | playback speed |
+
+Leave `branch` empty to keep the file in the workspace for your own steps; its path is in the
+action's `svg` output. If you forget `fetch-depth: 0`, strata warns that the clone is shallow.
 
 ## How the picture is made
 

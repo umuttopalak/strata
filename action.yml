@@ -1,0 +1,87 @@
+name: strata
+description: Render a repository's Git history as an animated mountain-range SVG for your README.
+author: Umut Topalak
+branding:
+  icon: triangle
+  color: gray-dark
+
+inputs:
+  output:
+    description: Where to write the SVG, relative to the workspace.
+    default: strata.svg
+  branch:
+    description: >
+      If set, publish the SVG to this branch as its only file (the branch is
+      replaced on every run). Needs `permissions: contents: write`.
+    default: ""
+  path:
+    description: Repository to render.
+    default: .
+  size:
+    description: Size in terminal cells, e.g. 100x30.
+    default: ""
+  depth:
+    description: Folder depth that defines a mountain; 0 picks one automatically.
+    default: "0"
+  since:
+    description: Only replay history from this date (YYYY-MM-DD).
+    default: ""
+  speed:
+    description: Playback speed multiplier.
+    default: "1"
+
+outputs:
+  svg:
+    description: Path of the written SVG.
+    value: ${{ steps.render.outputs.svg }}
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-go@v5
+      with:
+        go-version-file: ${{ github.action_path }}/go.mod
+        cache: false
+
+    # Build from the action's own source, so @v1 runs exactly that version.
+    - name: Build strata
+      shell: bash
+      working-directory: ${{ github.action_path }}
+      run: go build -trimpath -o "$RUNNER_TEMP/strata" ./cmd/strata
+
+    # Inputs travel as environment variables, never pasted into the script.
+    - name: Render
+      id: render
+      shell: bash
+      env:
+        STRATA_OUTPUT: ${{ inputs.output }}
+        STRATA_PATH: ${{ inputs.path }}
+        STRATA_SIZE: ${{ inputs.size }}
+        STRATA_DEPTH: ${{ inputs.depth }}
+        STRATA_SINCE: ${{ inputs.since }}
+        STRATA_SPEED: ${{ inputs.speed }}
+      run: |
+        args=(--svg "$STRATA_OUTPUT" --depth "$STRATA_DEPTH" --speed "$STRATA_SPEED")
+        [ -n "$STRATA_SIZE" ] && args+=(--size "$STRATA_SIZE")
+        [ -n "$STRATA_SINCE" ] && args+=(--since "$STRATA_SINCE")
+        mkdir -p "$(dirname "$STRATA_OUTPUT")"
+        "$RUNNER_TEMP/strata" "${args[@]}" "$STRATA_PATH"
+        echo "svg=$STRATA_OUTPUT" >> "$GITHUB_OUTPUT"
+
+    # Plumbing only: the branch gets a fresh one-file commit without
+    # touching the working tree, the index or the current branch.
+    - name: Publish
+      if: inputs.branch != ''
+      shell: bash
+      env:
+        STRATA_OUTPUT: ${{ inputs.output }}
+        STRATA_BRANCH: ${{ inputs.branch }}
+        GIT_AUTHOR_NAME: github-actions[bot]
+        GIT_AUTHOR_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
+        GIT_COMMITTER_NAME: github-actions[bot]
+        GIT_COMMITTER_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
+      run: |
+        blob=$(git hash-object -w "$STRATA_OUTPUT")
+        tree=$(printf '100644 blob %s\t%s\n' "$blob" "$(basename "$STRATA_OUTPUT")" | git mktree)
+        commit=$(git commit-tree "$tree" -m "Update $(basename "$STRATA_OUTPUT")")
+        git push --force origin "$commit:refs/heads/$STRATA_BRANCH"

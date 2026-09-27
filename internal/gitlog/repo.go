@@ -95,3 +95,10 @@ func (r *Repo) run(ctx context.Context, stdin string, args ...string) (string, e
 	}
 	return stdout.String(), nil
 }
+
+// Shallow reports whether the clone has only part of the history, as
+// actions/checkout makes by default. Errors count as not shallow.
+func (r *Repo) Shallow(ctx context.Context) bool {
+	out, err := r.output(ctx, "rev-parse", "--is-shallow-repository")
+	return err == nil && strings.TrimSpace(out) == "true"
+}
