@@ -1,0 +1,24 @@
+# strata Worker: README images at /owner/repo.svg plus the gallery site.
+# Setup: ../deploy/README.md. Deploy: npm run deploy
+name = "strata"
+main = "src/index.js"
+compatibility_date = "2026-09-01"
+
+# The gallery site. Requests that match a file are served directly;
+# everything else (the SVG routes) runs the Worker.
+[assets]
+directory = "./public"
+binding = "ASSETS"
+not_found_handling = "404-page"
+
+[[kv_namespaces]]
+binding = "SVGS"
+id = "REPLACE_WITH_KV_NAMESPACE_ID" # the same namespace strata-server writes to
+
+[vars]
+SERVER_URL = "https://REPLACE_WITH_RENDER_HOST.onrender.com" # no trailing slash
+MAX_REPO_MB = "300"
+
+# Secrets, set once with `npx wrangler secret put NAME`:
+#   STRATA_SECRET  the same value as on Render
+#   GITHUB_TOKEN   read-only token for public repositories

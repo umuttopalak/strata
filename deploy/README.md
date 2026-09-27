@@ -16,7 +16,7 @@ Render.com (free)   strata-server: clones, draws, writes the SVG into KV  ◄─
 Cloudflare Pages    the gallery site
 ```
 
-This file covers the server. The Worker and the site have their own sections once they exist.
+Set up the server first (sections 1–3), then the Worker (section 4).
 
 ## 1. Cloudflare: a KV namespace and a token
 
@@ -55,6 +55,56 @@ curl -X POST https://strata-server-xxxx.onrender.com/render \
 The second call answers `{"status":"queued"}` at once; about 15 seconds later the key
 `charmbracelet/lipgloss` appears in the KV namespace (Dashboard → Workers KV → strata → *KV Pairs*).
 Render's *Logs* tab shows one JSON line per render.
+
+## 4. Cloudflare: deploy the Worker
+
+The Worker in [`web/`](../web) answers `/owner/repo.svg` and serves the site from `web/public`.
+
+1. Edit [`web/wrangler.toml`](../web/wrangler.toml): put the KV **namespace ID** in `id` and your Render
+   URL in `SERVER_URL` (no trailing slash).
+2. Deploy:
+
+   ```sh
+   cd web
+   npm install
+   npx wrangler login
+   npx wrangler secret put STRATA_SECRET   # the value from Render
+   npx wrangler secret put GITHUB_TOKEN    # the read-only token from step 2
+   npm run deploy
+   ```
+
+   Wrangler prints the address, e.g. `https://strata.<your-subdomain>.workers.dev`.
+3. Open `https://strata.<your-subdomain>.workers.dev/charmbracelet/lipgloss.svg`. The first time a
+   repository is asked for you get a "drawing…" image; refresh after a minute or two.
+
+Anyone can now embed a public repository:
+
+```markdown
+![strata](https://strata.<your-subdomain>.workers.dev/owner/repo.svg)
+![strata](https://strata.<your-subdomain>.workers.dev/owner/repo.svg?labels)
+```
+
+What the Worker does with a request:
+
+| Situation | Answer | Cached for |
+| --- | --- | --- |
+| SVG in KV, drawn in the last 24 h | the SVG | 1 hour |
+| SVG in KV, older | the SVG, and asks the server for a new one | 1 hour |
+| not in KV, repository missing, private or too large (checked on GitHub) | an image saying so; the server is not woken | 10 minutes |
+| not in KV, repository fine | a "drawing…" image, and asks the server | not cached |
+
+Refusals never touch KV, so made-up names cannot use up its 1,000 free writes a day. The Cache API
+does not work on `workers.dev` addresses, so the Worker keeps no cache of its own; repeat requests
+are merged by the server, which also remembers what it drew in the last 10 minutes.
+
+Try it locally against a local server (`STRATA_STORE_DIR` mode, see below):
+
+```sh
+cd web
+echo 'STRATA_SECRET=dev' > .dev.vars
+npx wrangler dev --var SERVER_URL:http://localhost:8080
+npm test   # unit tests, no Cloudflare needed
+```
 
 ## Settings
 
