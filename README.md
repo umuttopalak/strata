@@ -14,19 +14,40 @@ alone for years, and which folders came and went.
 
 ## Install
 
-strata needs [Git](https://git-scm.com/downloads) and [Go 1.27+](https://go.dev/dl/).
+strata needs [Git](https://git-scm.com/downloads). It runs on Linux, macOS and Windows.
 
 ```sh
+# with Go 1.27+
 go install github.com/umuttopalak/strata/cmd/strata@latest
+
+# or download a binary for your platform from the releases page:
+# https://github.com/umuttopalak/strata/releases
 ```
 
-It runs on Linux, macOS and Windows.
+Homebrew (`brew install --cask umuttopalak/tap/strata`) and Scoop
+(`scoop bucket add umuttopalak https://github.com/umuttopalak/scoop-bucket && scoop install strata`)
+packages are published with each release once the tap and bucket repositories exist.
+
+## Try it on any repository
+
+You do not need a local copy. Give strata a URL and it clones the default branch into a temporary
+folder, replays it and deletes the clone afterwards:
+
+```sh
+strata github.com/charmbracelet/lipgloss
+strata https://gitlab.com/group/project
+strata git@github.com:you/private-repo.git   # uses your SSH keys
+```
+
+Large histories take a while to download: the Linux kernel is several gigabytes. Private repositories
+over HTTPS are not prompted for; clone them yourself and pass the local path.
 
 ## Use
 
 ```sh
 strata                          # replay the repository in the current directory
 strata ./path/to/repo           # replay another repository
+strata github.com/owner/repo    # replay a remote repository without cloning it yourself
 strata --speed 2                # twice as fast
 strata --since 2023-01-01       # start from a date (earlier code is already standing)
 strata --depth 2                # one mountain per second-level folder

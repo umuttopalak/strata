@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"time"
 
 	"charm.land/lipgloss/v2"
@@ -88,4 +89,23 @@ func writeSVG(log io.Writer, path string, tl *timeline.Timeline, repo string, cf
 	fmt.Fprintf(log, "wrote %s · %d KB · %d commits in %s, then holds %s\n",
 		path, (info.Size()+1023)/1024, tl.Commits, play.Round(100*time.Millisecond), o.Hold)
 	return nil
+}
+
+// cloneRemote clones a remote repository into a temporary folder for the
+// duration of the run. cleanup removes it and is always safe to call.
+func cloneRemote(ctx context.Context, log io.Writer, arg string) (dir string, cleanup func(), err error) {
+	tmp, err := os.MkdirTemp("", "strata-")
+	if err != nil {
+		return "", func() {}, err
+	}
+	cleanup = func() { _ = gitlog.RemoveClone(tmp) }
+
+	url := gitlog.RemoteURL(arg)
+	fmt.Fprintf(log, "cloning %s…\n", url)
+	var progress io.Writer
+	if term.IsTerminal(int(os.Stderr.Fd())) {
+		progress = os.Stderr
+	}
+	dir = filepath.Join(tmp, "repo.git")
+	return dir, cleanup, gitlog.Clone(ctx, url, dir, progress)
 }

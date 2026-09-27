@@ -28,7 +28,8 @@ type Repo struct {
 }
 
 // OpenRepo checks that git is installed and that path is inside a Git
-// repository with at least one commit.
+// repository with at least one commit. Bare repositories (such as those
+// made by Clone) work too; their Root is the git directory.
 func OpenRepo(ctx context.Context, path string) (*Repo, error) {
 	gitPath, err := exec.LookPath("git")
 	if err != nil {
@@ -50,11 +51,19 @@ func OpenRepo(ctx context.Context, path string) (*Repo, error) {
 	}
 
 	r := &Repo{Root: abs, git: gitPath}
-	out, err := r.output(ctx, "rev-parse", "--show-toplevel")
+	bare, err := r.output(ctx, "rev-parse", "--is-bare-repository")
 	if err != nil {
 		if strings.Contains(err.Error(), "not a git repository") {
 			return nil, fmt.Errorf("%s: %w", path, ErrNotRepo)
 		}
+		return nil, fmt.Errorf("%s: %w", path, err)
+	}
+	top := "--show-toplevel"
+	if strings.TrimSpace(bare) == "true" {
+		top = "--absolute-git-dir"
+	}
+	out, err := r.output(ctx, "rev-parse", top)
+	if err != nil {
 		return nil, fmt.Errorf("%s: %w", path, err)
 	}
 	r.Root = filepath.Clean(strings.TrimSpace(out))

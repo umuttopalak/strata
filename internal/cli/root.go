@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime/debug"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -18,6 +19,18 @@ import (
 
 // Version is overridden at build time via -ldflags "-X ...cli.Version=v1.2.3".
 var Version = "dev"
+
+// version falls back to the module version Go records for
+// `go install …@v1.2.3` builds, which have no ldflags.
+func version() string {
+	if Version != "dev" {
+		return Version
+	}
+	if info, ok := debug.ReadBuildInfo(); ok && info.Main.Version != "" && info.Main.Version != "(devel)" {
+		return info.Main.Version
+	}
+	return Version
+}
 
 // Config is the validated set of options for one run.
 type Config struct {
@@ -69,7 +82,7 @@ func (f flags) config(path string) (Config, error) {
 func newRootCmd() *cobra.Command {
 	var f flags
 	cmd := &cobra.Command{
-		Use:   "strata [path]",
+		Use:   "strata [path or URL]",
 		Short: "Watch a Git repository's history grow into a mountain range",
 		Long: `strata replays a Git repository's history in the terminal as a mountain
 range: each peak is a folder and its height is the folder's size in lines
@@ -77,6 +90,7 @@ of code. By default strata picks the folder depth that gives at least four
 peaks; a repository with all its files in the root gets a peak per file.`,
 		Example: `  strata                      # the repository in the current directory
   strata ./path/to/repo       # a specific repository
+  strata github.com/owner/repo  # any public repository, cloned to a temporary folder
   strata --speed 2 --depth 2  # faster playback, folders two levels deep
   strata --since 2020-01-01   # only history from 2020 onwards
   strata --labels             # name each mountain under the ground line
@@ -84,7 +98,7 @@ peaks; a repository with all its files in the root gets a peak per file.`,
 
 Keys while playing: space pause · ←/→ seek · +/- speed · q quit`,
 		Args:          cobra.MaximumNArgs(1),
-		Version:       Version,
+		Version:       version(),
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -96,9 +110,22 @@ Keys while playing: space pause · ←/→ seek · +/- speed · q quit`,
 			if err != nil {
 				return err
 			}
+			name := ""
+			if gitlog.IsRemote(cfg.Path) {
+				dir, cleanup, err := cloneRemote(cmd.Context(), cmd.ErrOrStderr(), cfg.Path)
+				defer cleanup()
+				if err != nil {
+					return friendly(err)
+				}
+				name = gitlog.RepoName(gitlog.RemoteURL(cfg.Path))
+				cfg.Path = dir
+			}
 			repo, err := gitlog.OpenRepo(cmd.Context(), cfg.Path)
 			if err != nil {
 				return friendly(err)
+			}
+			if name == "" {
+				name = filepath.Base(repo.Root)
 			}
 			if repo.Shallow(cmd.Context()) {
 				fmt.Fprintln(cmd.ErrOrStderr(), "strata: warning: this is a shallow clone, so only part of the history is available\n"+
@@ -116,7 +143,6 @@ Keys while playing: space pause · ←/→ seek · +/- speed · q quit`,
 			if err != nil {
 				return friendly(err)
 			}
-			name := filepath.Base(repo.Root)
 			switch {
 			case f.svg != "":
 				return writeSVG(cmd.ErrOrStderr(), f.svg, tl, name, cfg)
@@ -157,6 +183,8 @@ func friendly(err error) error {
 		hint = "run strata inside a Git repository or pass the path to one"
 	case errors.Is(err, gitlog.ErrEmptyRepo):
 		hint = "make at least one commit, then try again"
+	case errors.Is(err, gitlog.ErrCloneFailed):
+		hint = "check the URL; for a private repository, clone it yourself and pass the local path"
 	case errors.Is(err, gitlog.ErrNoCommits):
 		hint = "pick an earlier --since date"
 	default:
