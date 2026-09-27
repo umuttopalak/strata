@@ -1,0 +1,80 @@
+# Release with: git tag v1.0.0 && git push origin v1.0.0
+# (.github/workflows/release.yml runs goreleaser on every v* tag).
+# Try locally with: goreleaser release --snapshot --clean
+version: 2
+project_name: strata
+
+before:
+  hooks:
+    - go mod tidy
+    - go test ./...
+
+builds:
+  - main: ./cmd/strata
+    binary: strata
+    env:
+      - CGO_ENABLED=0
+    goos: [linux, darwin, windows]
+    goarch: [amd64, arm64]
+    flags: [-trimpath]
+    ldflags:
+      - -s -w -X github.com/umuttopalak/strata/internal/cli.Version={{ .Version }}
+
+archives:
+  - name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    files:
+      - README.md
+
+checksum:
+  name_template: checksums.txt
+
+release:
+  github:
+    owner: umuttopalak
+    name: strata
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+
+# Homebrew and Scoop publish into separate repositories
+# (umuttopalak/homebrew-tap and umuttopalak/scoop-bucket). Create them and a
+# TAP_GITHUB_TOKEN secret that can push to both; until then these steps
+# are skipped and the release still goes out.
+homebrew_casks:
+  - name: strata
+    repository:
+      owner: umuttopalak
+      name: homebrew-tap
+      token: "{{ .Env.TAP_GITHUB_TOKEN }}"
+    skip_upload: '{{ if index .Env "TAP_GITHUB_TOKEN" }}false{{ else }}true{{ end }}'
+    homepage: https://github.com/umuttopalak/strata
+    description: Watch a Git repository's history rise as a mountain range
+    binaries: [strata]
+    dependencies:
+      - formula: git
+    # The binaries are not notarized; without this macOS refuses to run them.
+    hooks:
+      post:
+        install: |
+          if OS.mac?
+            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/strata"]
+          end
+
+scoops:
+  - name: strata
+    repository:
+      owner: umuttopalak
+      name: scoop-bucket
+      token: "{{ .Env.TAP_GITHUB_TOKEN }}"
+    skip_upload: '{{ if index .Env "TAP_GITHUB_TOKEN" }}false{{ else }}true{{ end }}'
+    homepage: https://github.com/umuttopalak/strata
+    description: Watch a Git repository's history rise as a mountain range
+    depends: [git]
