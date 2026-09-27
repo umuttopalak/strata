@@ -6,14 +6,15 @@ The hosted service lets anyone embed a repository's mountain range without insta
 ![strata](https://<your-worker>.workers.dev/charmbracelet/lipgloss.svg)
 ```
 
-It runs on free plans only:
+The public instance runs at [strata.umuttopalak-de4.workers.dev](https://strata.umuttopalak-de4.workers.dev).
+It uses free plans only, with no credit card:
 
 ```
 README <img>  ──►  Cloudflare Worker ──► SVG in Workers KV?
                     (front door)          ├─ yes → served, cached
-                                          └─ no  → "rendering…" image, and a render request ─┐
-Render.com (free)   strata-server: clones, draws, writes the SVG into KV  ◄──────────────────┘
-Cloudflare Pages    the gallery site
+                                          └─ no  → "drawing…" image, and a render request ─┐
+Render.com (free)   strata-server: clones, draws, writes the SVG into KV  ◄────────────────┘
+Cloudflare Worker   also serves the site (web/public): try-it box, gallery, docs
 ```
 
 Set up the server first (sections 1–3), then the Worker (section 4).
@@ -58,7 +59,8 @@ Render's *Logs* tab shows one JSON line per render.
 
 ## 4. Cloudflare: deploy the Worker
 
-The Worker in [`web/`](../web) answers `/owner/repo.svg` and serves the site from `web/public`.
+The Worker in [`web/`](../web) answers `/owner/repo.svg` and serves the site from `web/public`
+(the try-it box, a gallery and the docs). Redeploy with `npm run deploy` after changing either.
 
 1. Edit [`web/wrangler.toml`](../web/wrangler.toml): put the KV **namespace ID** in `id` and your Render
    URL in `SERVER_URL` (no trailing slash).
@@ -93,6 +95,9 @@ What the Worker does with a request:
 | not in KV, repository missing, private or too large (checked on GitHub) | an image saying so; the server is not woken | 10 minutes |
 | not in KV, repository fine | a "drawing…" image, and asks the server | not cached |
 
+Every SVG response carries `X-Strata-Status` (`ok`, `error`, `refused` or `rendering`); the site's
+try-it box uses it to keep asking until a placeholder turns into the real image.
+
 Refusals never touch KV, so made-up names cannot use up its 1,000 free writes a day. The Cache API
 does not work on `workers.dev` addresses, so the Worker keeps no cache of its own; repeat requests
 are merged by the server, which also remembers what it drew in the last 10 minutes.
@@ -124,15 +129,25 @@ the Worker does not keep asking.
 
 ### What the free plan can do
 
-Measured in Docker with Render's free limits (0.1 CPU, 512 MB):
+Measured on the public instance (Render free plan):
 
-| Repository | Commits | Render time | Peak memory |
-| --- | --- | --- | --- |
-| charmbracelet/lipgloss | 457 | 15 s | — |
-| junegunn/fzf | 3,488 | 1 min 57 s | 129 MB |
+| Repository | Mainline commits | Render time |
+| --- | --- | --- |
+| charmbracelet/lipgloss | 457 | 5 s |
+| charmbracelet/bubbletea | 1,132 | 9 s |
+| BurntSushi/ripgrep | 2,215 | 20 s |
+| junegunn/fzf | 3,488 | 37 s |
+| ohmyzsh/ohmyzsh | 4,937 | 24 s |
 
-Time grows with commits (about 30 a second), which is why `STRATA_MAX_COMMITS` exists. Renders run
-one at a time.
+Time grows mostly with commits, which is why `STRATA_MAX_COMMITS` exists; memory stays low (under
+150 MB for tailwindcss's 4,853 commits in a 512 MB container).
+
+Renders run one at a time, so a small repository asked for right after a few large ones waits its
+turn. The queue lives in memory: a redeploy (or the free instance going to sleep) drops what was
+waiting, and the next request for a repository that is still missing queues it again. Asking again
+does no harm: the server merges requests for a repository that is queued, running or drawn in the
+last 10 minutes, and every request shows up in the logs with its outcome (`queued`,
+`already queued`, `recently rendered`, `not found`, `too large`).
 
 ## Run it locally
 
