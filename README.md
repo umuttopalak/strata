@@ -79,6 +79,8 @@ jobs:
 | `since` | | only replay history from this date |
 | `speed` | `1` | playback speed |
 | `labels` | `false` | write folder names under the mountains |
+| `json` | | write the versioned JSON export to this path |
+| `csv` | | write the CSV export to this path |
 
 Leave `branch` empty to keep the file in the workspace for your own steps; its path is in the
 action's `svg` output. If you forget `fetch-depth: 0`, strata warns that the clone is shallow.
@@ -120,7 +122,22 @@ strata --since 2023-01-01       # start from a date (earlier code is already sta
 strata --depth 2                # one mountain per second-level folder
 strata --labels                 # name each mountain under the ground line
 strata --svg strata.svg         # write an animated SVG instead of playing
+strata --json strata.json       # write a machine-readable export
+strata --csv strata.csv         # write a tabular export
 ```
+
+### Machine-readable exports
+
+`--json PATH` writes schema version `1` with repository bounds, grouping depth,
+column names, totals, every timeline frame (`values` and `touched` per column),
+detected events, and commit captions. Dates use RFC 3339. For long histories,
+the timeline groups commits into frames; the `commits` array therefore contains
+the caption for each emitted frame rather than every underlying commit.
+
+`--csv PATH` writes the same information as normalized rows. The `record_type`
+column is `frame_column`, `event`, or `commit`; the schema version and repository
+bounds are repeated on every row. `--json` and `--csv` can be used together (and
+with `--svg`).
 
 While it plays:
 
