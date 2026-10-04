@@ -12,6 +12,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/umuttopalak/strata/internal/export"
 	"github.com/umuttopalak/strata/internal/gitlog"
 	"github.com/umuttopalak/strata/internal/player"
 	"github.com/umuttopalak/strata/internal/timeline"
@@ -50,6 +51,8 @@ type flags struct {
 	since   string
 	size    string
 	svg     string
+	json    string
+	csv     string
 	labels  bool
 	exclude []string
 	dump    bool
@@ -134,7 +137,8 @@ Keys while playing: space pause · ←/→ seek · +/- speed · q quit`,
 					"  hint: run `git fetch --unshallow`, or set `fetch-depth: 0` on actions/checkout")
 			}
 			opts := gitlog.LogOptions{Since: cfg.Since}
-			if _, err := repo.Bounds(cmd.Context(), opts); err != nil {
+			bounds, err := repo.Bounds(cmd.Context(), opts)
+			if err != nil {
 				return friendly(err)
 			}
 			if f.dump {
@@ -145,9 +149,25 @@ Keys while playing: space pause · ←/→ seek · +/- speed · q quit`,
 			if err != nil {
 				return friendly(err)
 			}
+			if f.json != "" {
+				if err := export.WriteJSON(f.json, name, bounds, tl); err != nil {
+					return err
+				}
+			}
+			if f.csv != "" {
+				if err := export.WriteCSV(f.csv, name, bounds, tl); err != nil {
+					return err
+				}
+			}
+			if f.svg != "" {
+				if err := writeSVG(cmd.ErrOrStderr(), f.svg, tl, name, cfg); err != nil {
+					return err
+				}
+			}
+			if f.json != "" || f.csv != "" || f.svg != "" {
+				return nil
+			}
 			switch {
-			case f.svg != "":
-				return writeSVG(cmd.ErrOrStderr(), f.svg, tl, name, cfg)
 			case cmd.Flags().Changed("frame"):
 				return printFrame(cmd.OutOrStdout(), tl, name, f.frame, cfg)
 			case f.dumpF:
@@ -164,6 +184,8 @@ Keys while playing: space pause · ←/→ seek · +/- speed · q quit`,
 	cmd.Flags().IntVar(&f.depth, "depth", 0, "folder depth that defines a peak (0 = pick automatically)")
 	cmd.Flags().StringVar(&f.since, "since", "", "start from this date (YYYY-MM-DD)")
 	cmd.Flags().StringVar(&f.svg, "svg", "", "write an animated SVG to this file instead of playing")
+	cmd.Flags().StringVar(&f.json, "json", "", "write a versioned JSON export to this file instead of playing")
+	cmd.Flags().StringVar(&f.csv, "csv", "", "write a CSV export to this file instead of playing")
 	cmd.Flags().BoolVar(&f.labels, "labels", false, "write folder names under the mountains")
 	cmd.Flags().StringArrayVar(&f.exclude, "exclude", nil, "exclude paths matching a glob or preset (vendor, generated, test); repeatable")
 	cmd.Flags().StringVar(&f.size, "size", "", "size in terminal cells for --svg and --frame, e.g. 100x30")

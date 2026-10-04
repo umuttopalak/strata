@@ -80,6 +80,8 @@ jobs:
 | `speed` | `1` | playback speed |
 | `labels` | `false` | write folder names under the mountains |
 | `exclude` | | comma-separated path globs or presets (`vendor`, `generated`, `test`) to leave out |
+| `json` | | write the versioned JSON export to this path |
+| `csv` | | write the CSV export to this path |
 
 Leave `branch` empty to keep the file in the workspace for your own steps; its path is in the
 action's `svg` output. If you forget `fetch-depth: 0`, strata warns that the clone is shallow.
@@ -122,12 +124,27 @@ strata --depth 2                # one mountain per second-level folder
 strata --labels                 # name each mountain under the ground line
 strata --svg strata.svg         # write an animated SVG instead of playing
 strata --exclude vendor --exclude 'docs/**' # leave noisy paths out
+strata --json strata.json       # write a machine-readable export
+strata --csv strata.csv         # write a tabular export
 ```
 
 Use `--exclude` more than once to omit paths from both the baseline and replay. A value without a
 slash matches any path component; slash-separated values match repository paths. The built-in
 presets `vendor`, `generated`, and `test` omit common dependency, generated-code, and test paths.
 The GitHub Action accepts the same values as a comma-separated `exclude` input.
+
+### Machine-readable exports
+
+`--json PATH` writes schema version `1` with repository bounds, grouping depth,
+column names, totals, every timeline frame (`values` and `touched` per column),
+detected events, and commit captions. Dates use RFC 3339. For long histories,
+the timeline groups commits into frames; the `commits` array therefore contains
+the caption for each emitted frame rather than every underlying commit.
+
+`--csv PATH` writes the same information as normalized rows. The `record_type`
+column is `frame_column`, `event`, or `commit`; the schema version and repository
+bounds are repeated on every row. `--json` and `--csv` can be used together (and
+with `--svg`).
 
 While it plays:
 

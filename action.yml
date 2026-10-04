@@ -35,11 +35,23 @@ inputs:
   exclude:
     description: Comma-separated path globs or presets to exclude (vendor, generated, test).
     default: ""
+  json:
+    description: Write a versioned JSON export to this path.
+    default: ""
+  csv:
+    description: Write a CSV export to this path.
+    default: ""
 
 outputs:
   svg:
     description: Path of the written SVG.
     value: ${{ steps.render.outputs.svg }}
+  json:
+    description: Path of the written JSON export.
+    value: ${{ steps.render.outputs.json }}
+  csv:
+    description: Path of the written CSV export.
+    value: ${{ steps.render.outputs.csv }}
 
 runs:
   using: composite
@@ -68,8 +80,13 @@ runs:
         STRATA_SPEED: ${{ inputs.speed }}
         STRATA_LABELS: ${{ inputs.labels }}
         STRATA_EXCLUDE: ${{ inputs.exclude }}
+        STRATA_JSON: ${{ inputs.json }}
+        STRATA_CSV: ${{ inputs.csv }}
       run: |
-        args=(--svg "$STRATA_OUTPUT" --depth "$STRATA_DEPTH" --speed "$STRATA_SPEED")
+        args=(--depth "$STRATA_DEPTH" --speed "$STRATA_SPEED")
+        [ -n "$STRATA_OUTPUT" ] && args+=(--svg "$STRATA_OUTPUT")
+        [ -n "$STRATA_JSON" ] && args+=(--json "$STRATA_JSON")
+        [ -n "$STRATA_CSV" ] && args+=(--csv "$STRATA_CSV")
         [ -n "$STRATA_SIZE" ] && args+=(--size "$STRATA_SIZE")
         [ -n "$STRATA_SINCE" ] && args+=(--since "$STRATA_SINCE")
         [ "$STRATA_LABELS" = "true" ] && args+=(--labels)
@@ -79,9 +96,13 @@ runs:
             [ -n "$pattern" ] && args+=(--exclude "$pattern")
           done
         fi
-        mkdir -p "$(dirname "$STRATA_OUTPUT")"
+        [ -n "$STRATA_OUTPUT" ] && mkdir -p "$(dirname "$STRATA_OUTPUT")"
+        [ -n "$STRATA_JSON" ] && mkdir -p "$(dirname "$STRATA_JSON")"
+        [ -n "$STRATA_CSV" ] && mkdir -p "$(dirname "$STRATA_CSV")"
         "$RUNNER_TEMP/strata" "${args[@]}" "$STRATA_PATH"
-        echo "svg=$STRATA_OUTPUT" >> "$GITHUB_OUTPUT"
+        [ -n "$STRATA_OUTPUT" ] && echo "svg=$STRATA_OUTPUT" >> "$GITHUB_OUTPUT"
+        [ -n "$STRATA_JSON" ] && echo "json=$STRATA_JSON" >> "$GITHUB_OUTPUT"
+        [ -n "$STRATA_CSV" ] && echo "csv=$STRATA_CSV" >> "$GITHUB_OUTPUT"
 
     # Plumbing only: the branch gets a fresh one-file commit without
     # touching the working tree, the index or the current branch.
