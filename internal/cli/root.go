@@ -34,29 +34,31 @@ func version() string {
 
 // Config is the validated set of options for one run.
 type Config struct {
-	Path   string
-	Speed  float64
-	Depth  int
-	Since  time.Time // zero means the whole history
-	Cols   int       // --size, 0 when not given
-	Rows   int
-	Labels bool
+	Path    string
+	Speed   float64
+	Depth   int
+	Since   time.Time // zero means the whole history
+	Cols    int       // --size, 0 when not given
+	Rows    int
+	Labels  bool
+	Exclude []string
 }
 
 type flags struct {
-	speed  float64
-	depth  int
-	since  string
-	size   string
-	svg    string
-	labels bool
-	dump   bool
-	dumpF  bool
-	frame  int
+	speed   float64
+	depth   int
+	since   string
+	size    string
+	svg     string
+	labels  bool
+	exclude []string
+	dump    bool
+	dumpF   bool
+	frame   int
 }
 
 func (f flags) config(path string) (Config, error) {
-	cfg := Config{Path: path, Speed: f.speed, Depth: f.depth, Labels: f.labels}
+	cfg := Config{Path: path, Speed: f.speed, Depth: f.depth, Labels: f.labels, Exclude: append([]string(nil), f.exclude...)}
 	if f.speed <= 0 {
 		return cfg, fmt.Errorf("--speed must be greater than 0 (got %g)", f.speed)
 	}
@@ -139,7 +141,7 @@ Keys while playing: space pause · ←/→ seek · +/- speed · q quit`,
 				return dump(cmd.Context(), cmd.OutOrStdout(), repo, opts)
 			}
 
-			tl, err := scan(cmd.Context(), repo, opts, timeline.Options{Depth: cfg.Depth})
+			tl, err := scan(cmd.Context(), repo, opts, timeline.Options{Depth: cfg.Depth, Exclude: cfg.Exclude})
 			if err != nil {
 				return friendly(err)
 			}
@@ -163,6 +165,7 @@ Keys while playing: space pause · ←/→ seek · +/- speed · q quit`,
 	cmd.Flags().StringVar(&f.since, "since", "", "start from this date (YYYY-MM-DD)")
 	cmd.Flags().StringVar(&f.svg, "svg", "", "write an animated SVG to this file instead of playing")
 	cmd.Flags().BoolVar(&f.labels, "labels", false, "write folder names under the mountains")
+	cmd.Flags().StringArrayVar(&f.exclude, "exclude", nil, "exclude paths matching a glob or preset (vendor, generated, test); repeatable")
 	cmd.Flags().StringVar(&f.size, "size", "", "size in terminal cells for --svg and --frame, e.g. 100x30")
 	cmd.Flags().BoolVar(&f.dump, "dump", false, "print the parsed history instead of playing it")
 	cmd.Flags().BoolVar(&f.dumpF, "dump-frames", false, "print the timeline frames instead of playing them")

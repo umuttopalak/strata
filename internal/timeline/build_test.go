@@ -161,6 +161,48 @@ func TestBuildSeedsBaseline(t *testing.T) {
 	}
 }
 
+func TestBuildExcludesCommitsAndBaseline(t *testing.T) {
+	tl := build(t, fakeSource{
+		baseline: []gitlog.FileChange{add("vendor/old.go", 100), add("src/old.go", 40)},
+		commits: []gitlog.Commit{
+			commit("changes", day(2020, 2, 1), add("vendor/new.go", 50), add("src/new.go", 10), add("foo_test.go", 20)),
+		},
+	}, Options{Exclude: []string{"vendor", "test"}})
+
+	if got, want := totals(tl, tl.Frames[0]), map[string]int64{"src": 40}; !maps.Equal(got, want) {
+		t.Errorf("baseline = %v, want %v", got, want)
+	}
+	if got, want := totals(tl, tl.Frames[1]), map[string]int64{"src": 50}; !maps.Equal(got, want) {
+		t.Errorf("final = %v, want %v", got, want)
+	}
+	if c := tl.Frames[1].Caption; c.Files != 1 || c.Added != 10 || c.Deleted != 0 {
+		t.Errorf("filtered caption = %+v, want one included file and +10", c)
+	}
+}
+
+func TestExcludedGlobPatterns(t *testing.T) {
+	tests := []struct {
+		name     string
+		patterns []string
+		want     bool
+	}{
+		{"nested vendor preset", []string{"vendor"}, true},
+		{"generated preset", []string{"generated"}, true},
+		{"test suffix preset", []string{"test"}, true},
+		{"directory glob", []string{"docs/**"}, true},
+		{"filename glob", []string{"*.lock"}, true},
+		{"kept source", []string{"vendor"}, false},
+	}
+	paths := []string{"pkg/vendor/x.go", "src/generated/code.go", "internal/foo_test.go", "docs/guide.md", "yarn.lock", "src/main.go"}
+	for i, path := range paths {
+		t.Run(path, func(t *testing.T) {
+			if got := excluded(path, tests[i].patterns); got != tests[i].want {
+				t.Errorf("excluded(%q, %v) = %v, want %v", path, tests[i].patterns, got, tests[i].want)
+			}
+		})
+	}
+}
+
 func TestBuildErrors(t *testing.T) {
 	boom := errors.New("boom")
 	_, err := Build(context.Background(), fakeSource{walkErr: boom}, gitlog.LogOptions{}, Options{})

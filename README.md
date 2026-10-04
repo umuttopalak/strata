@@ -79,6 +79,7 @@ jobs:
 | `since` | | only replay history from this date |
 | `speed` | `1` | playback speed |
 | `labels` | `false` | write folder names under the mountains |
+| `exclude` | | comma-separated path globs or presets (`vendor`, `generated`, `test`) to leave out |
 
 Leave `branch` empty to keep the file in the workspace for your own steps; its path is in the
 action's `svg` output. If you forget `fetch-depth: 0`, strata warns that the clone is shallow.
@@ -120,7 +121,13 @@ strata --since 2023-01-01       # start from a date (earlier code is already sta
 strata --depth 2                # one mountain per second-level folder
 strata --labels                 # name each mountain under the ground line
 strata --svg strata.svg         # write an animated SVG instead of playing
+strata --exclude vendor --exclude 'docs/**' # leave noisy paths out
 ```
+
+Use `--exclude` more than once to omit paths from both the baseline and replay. A value without a
+slash matches any path component; slash-separated values match repository paths. The built-in
+presets `vendor`, `generated`, and `test` omit common dependency, generated-code, and test paths.
+The GitHub Action accepts the same values as a comma-separated `exclude` input.
 
 While it plays:
 

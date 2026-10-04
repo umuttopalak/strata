@@ -2,6 +2,7 @@ package timeline
 
 import (
 	"context"
+	"path"
 	"strings"
 	"time"
 
@@ -14,8 +15,9 @@ const DefaultMaxFrames = 300
 
 // Options controls how commits become frames.
 type Options struct {
-	Depth     int // folder depth that defines a column; 0 picks one (see Build)
-	MaxFrames int // values < 1 mean DefaultMaxFrames
+	Depth     int      // folder depth that defines a column; 0 picks one (see Build)
+	MaxFrames int      // values < 1 mean DefaultMaxFrames
+	Exclude   []string // path globs or presets to leave out of the replay
 
 	// Progress, if set, is called after each commit is read with the
 	// number read so far.
@@ -59,6 +61,9 @@ func Build(ctx context.Context, src gitlog.Source, log gitlog.LogOptions, opts O
 	}
 	var seed []delta
 	for _, f := range base {
+		if excluded(f.Path, opts.Exclude) {
+			continue
+		}
 		seed = append(seed, delta{c.id(f.Path), int64(f.Added - f.Deleted)})
 	}
 
@@ -66,9 +71,12 @@ func Build(ctx context.Context, src gitlog.Source, log gitlog.LogOptions, opts O
 	err = src.Walk(ctx, log, func(gc gitlog.Commit) error {
 		cm := record{at: gc.Time, tags: gc.Tags, caption: Caption{
 			Hash: gc.Hash, Author: gc.Author, Subject: gc.Subject, Time: gc.AuthorTime,
-			Files: len(gc.Files),
 		}}
 		for _, f := range gc.Files {
+			if excluded(f.Path, opts.Exclude) {
+				continue
+			}
+			cm.caption.Files++
 			cm.caption.Added += f.Added
 			cm.caption.Deleted += f.Deleted
 			cm.deltas = addDelta(cm.deltas, c.id(f.Path), int64(f.Added-f.Deleted))
@@ -99,6 +107,78 @@ func Build(ctx context.Context, src gitlog.Source, log gitlog.LogOptions, opts O
 	}
 	tl.Events = detectEvents(records, seedLines, len(seed) > 0, framesPer(len(records), opts.MaxFrames))
 	return tl, nil
+}
+
+// excluded reports whether a path matches an exclusion glob or built-in
+// preset. Patterns match the complete slash-separated path; a pattern with
+// no slash also matches any directory or file component of that name.
+func excluded(name string, patterns []string) bool {
+	name = strings.Trim(name, "/")
+	for _, raw := range patterns {
+		p := strings.Trim(strings.ReplaceAll(raw, "\\", "/"), "/")
+		if p == "" {
+			continue
+		}
+		if preset, ok := excludePresets[p]; ok {
+			for _, presetPattern := range preset {
+				if matchExcludePattern(name, presetPattern) {
+					return true
+				}
+			}
+			continue
+		}
+		if matchExcludePattern(name, p) {
+			return true
+		}
+	}
+	return false
+}
+
+func matchExcludePattern(name, pattern string) bool {
+	if strings.Contains(pattern, "/") {
+		return globMatch(pattern, name)
+	}
+	for _, part := range strings.Split(name, "/") {
+		if globMatch(pattern, part) {
+			return true
+		}
+	}
+	return false
+}
+
+// Presets intentionally use directory components, so they work at any
+// nesting level without requiring a non-standard ** glob implementation.
+var excludePresets = map[string][]string{
+	"vendor":    {"vendor"},
+	"generated": {"generated", "gen"},
+	"test":      {"test/**", "tests/**", "*_test.go", "*.test.*"},
+}
+
+func globMatch(pattern, name string) bool {
+	if strings.HasSuffix(pattern, "/**") {
+		base := strings.TrimSuffix(pattern, "/**")
+		return name == base || strings.HasPrefix(name, base+"/")
+	}
+	if strings.HasPrefix(pattern, "**/") {
+		pattern = strings.TrimPrefix(pattern, "**/")
+		if globMatch(pattern, name) {
+			return true
+		}
+		for i := strings.IndexByte(name, '/'); i >= 0; {
+			if globMatch(pattern, name[i+1:]) {
+				return true
+			}
+			rest := name[i+1:]
+			n := strings.IndexByte(rest, '/')
+			if n < 0 {
+				break
+			}
+			i += n + 1
+		}
+		return false
+	}
+	ok, err := path.Match(pattern, name)
+	return err == nil && ok
 }
 
 // framesPer is how many commits each frame advances.

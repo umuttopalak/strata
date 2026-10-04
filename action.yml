@@ -32,6 +32,9 @@ inputs:
   labels:
     description: Write folder names under the mountains ("true" or "false").
     default: "false"
+  exclude:
+    description: Comma-separated path globs or presets to exclude (vendor, generated, test).
+    default: ""
 
 outputs:
   svg:
@@ -64,11 +67,18 @@ runs:
         STRATA_SINCE: ${{ inputs.since }}
         STRATA_SPEED: ${{ inputs.speed }}
         STRATA_LABELS: ${{ inputs.labels }}
+        STRATA_EXCLUDE: ${{ inputs.exclude }}
       run: |
         args=(--svg "$STRATA_OUTPUT" --depth "$STRATA_DEPTH" --speed "$STRATA_SPEED")
         [ -n "$STRATA_SIZE" ] && args+=(--size "$STRATA_SIZE")
         [ -n "$STRATA_SINCE" ] && args+=(--since "$STRATA_SINCE")
         [ "$STRATA_LABELS" = "true" ] && args+=(--labels)
+        if [ -n "$STRATA_EXCLUDE" ]; then
+          IFS=',' read -r -a excludes <<< "$STRATA_EXCLUDE"
+          for pattern in "${excludes[@]}"; do
+            [ -n "$pattern" ] && args+=(--exclude "$pattern")
+          done
+        fi
         mkdir -p "$(dirname "$STRATA_OUTPUT")"
         "$RUNNER_TEMP/strata" "${args[@]}" "$STRATA_PATH"
         echo "svg=$STRATA_OUTPUT" >> "$GITHUB_OUTPUT"
